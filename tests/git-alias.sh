@@ -146,7 +146,19 @@ check "--unset das duas cópias: mensagem cita arquivo e --global" \
 check "--unset remove a cópia do arquivo e a do --global" \
 	"|" "$(git config --file "$AF" alias.dupe 2>/dev/null || true)|$(git config --file "$GIT_CONFIG_GLOBAL" alias.dupe 2>/dev/null || true)"
 
-# --- destino do include.path é um symlink (layout comum de dotfiles) ------
+mode_of() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"; }
+
+# --- arquivo incluído comum: gravação preserva o modo do arquivo ---------
+PLAIN="$SB/plain-aliases.gitconfig"
+printf '%s\n' '# Gerado por: git alias --export' '# x' '' '[alias]' >"$PLAIN"
+chmod 0644 "$PLAIN"
+git config --global --unset-all include.path
+git config --global --add include.path "$PLAIN"
+"$SCRIPT" viaplain '!echo p' >/dev/null
+check "gravação em arquivo comum preserva o modo 0644" \
+	"644" "$(mode_of "$PLAIN")"
+
+# --- destino do include.path é uma cadeia de symlinks (layout de dotfiles) --
 mkdir -p "$SB/real"
 REAL="$SB/real/aliases.gitconfig"
 printf '%s\n' \
@@ -154,18 +166,41 @@ printf '%s\n' \
 	'# Nao edite a mao; rode o comando novamente para atualizar.' \
 	'' \
 	'[alias]' >"$REAL"
+chmod 0644 "$REAL"
 LINK="$SB/linked-aliases.gitconfig"
+LINK2="$SB/linked2-aliases.gitconfig"
 ln -s "$REAL" "$LINK"
+ln -s "$LINK" "$LINK2"
 git config --global --unset-all include.path
-git config --global --add include.path "$LINK"
+git config --global --add include.path "$LINK2"
 
 "$SCRIPT" viasym '!echo sym' >/dev/null
-check "gravação preserva o symlink apontado por include.path" \
+check "gravação via cadeia de symlinks preserva o 1º link" \
+	"symlink" "$([ -L "$LINK2" ] && echo symlink || echo regular)"
+check "gravação via cadeia de symlinks preserva o 2º link" \
 	"symlink" "$([ -L "$LINK" ] && echo symlink || echo regular)"
-check "gravação chega no arquivo real por trás do symlink" \
+check "gravação chega no arquivo real ao fim da cadeia" \
 	"!echo sym" "$(git config --file "$REAL" alias.viasym)"
+check "gravação via symlink preserva o modo 0644 do arquivo real" \
+	"644" "$(mode_of "$REAL")"
 check "arquivo real segue com cabeçalho após gravar via symlink" \
 	"# Gerado por: git alias --export" "$(head -n1 "$REAL")"
+check "gravação via symlink não deixa temporário para trás" \
+	"" "$(find "$SB" -name 'git-alias.*' 2>/dev/null)"
+
+# --export para um alvo que é symlink: preserva o link e o modo do alvo
+EXPLINK="$SB/exp-link.gitconfig"
+EXPREAL="$SB/real/exp-real.gitconfig"
+: >"$EXPREAL"
+chmod 0644 "$EXPREAL"
+ln -s "$EXPREAL" "$EXPLINK"
+"$SCRIPT" --export "$EXPLINK" 2>/dev/null
+check "--export para symlink preserva o link" \
+	"symlink" "$([ -L "$EXPLINK" ] && echo symlink || echo regular)"
+check "--export para symlink escreve no arquivo real" \
+	"checkout" "$(git config --file "$EXPREAL" alias.co)"
+check "--export para symlink preserva o modo 0644 do alvo" \
+	"644" "$(mode_of "$EXPREAL")"
 
 echo
 echo "pass=$pass fail=$fail"
