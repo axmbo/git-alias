@@ -36,6 +36,18 @@ Exemplos:
 EOF
 }
 
+# git config sobre a fonte pedida: <src> vazio = config mesclado (global +
+# includes); senão, o arquivo <src> isolado.
+gc() {
+	src="$1"
+	shift
+	if [ -n "$src" ]; then
+		git config --file "$src" "$@"
+	else
+		git config "$@"
+	fi
+}
+
 # Cria um arquivo temporário com o cabeçalho padrão seguido da seção [alias]
 # em ordem alfabética estável (LC_ALL=C, para não variar com o locale) e ecoa
 # o caminho dele. $1: arquivo-fonte a ler; vazio = git config mesclado
@@ -53,20 +65,11 @@ alias_render() {
 		printf '# Gerado por: git alias --export\n'
 		printf '# Nao edite a mao; rode o comando novamente para atualizar.\n\n'
 	} >"$tmp"
-	if [ -n "$from" ]; then
-		git config --file "$from" --get-regexp '^alias\.' 2>/dev/null
-	else
-		git config --get-regexp '^alias\.' 2>/dev/null
-	fi \
+	gc "$from" --get-regexp '^alias\.' 2>/dev/null \
 		| cut -d. -f2- | cut -d' ' -f1 | LC_ALL=C sort -u \
 		| while IFS= read -r name; do
 			[ "$name" = "alias" ] && continue
-			if [ -n "$from" ]; then
-				val="$(git config --file "$from" --get "alias.$name")"
-			else
-				val="$(git config --get "alias.$name")"
-			fi
-			git config --file "$tmp" "alias.$name" "$val"
+			git config --file "$tmp" "alias.$name" "$(gc "$from" --get "alias.$name")"
 		done
 	printf '%s\n' "$tmp"
 }
