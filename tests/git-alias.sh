@@ -78,6 +78,20 @@ check "--export para arquivo: gone reimportável" \
 check "--export para arquivo: omite alias.alias" \
 	"" "$(git config --file "$EXP" alias.alias 2>/dev/null || true)"
 
+# --- valor de alias multilinha não corrompe --export --------------------
+git config --global alias.mlfunc "$(printf '!f() {\n  git push\n}\nf')"
+MLX="$SB/ml.gitconfig"
+"$SCRIPT" --export "$MLX" 2>/dev/null || true
+check "--export com alias multilinha: não aborta, gera o arquivo" \
+	"sim" "$([ -s "$MLX" ] && echo sim || echo nao)"
+check "--export com alias multilinha: valor preservado no round-trip" \
+	"$(git config --get alias.mlfunc)" \
+	"$(git config --file "$MLX" --get alias.mlfunc 2>/dev/null || true)"
+check "--export com alias multilinha: sem alias bogus a partir do corpo" \
+	"co gone mlfunc" \
+	"$(git config --file "$MLX" --name-only --get-regexp '^alias\.' 2>/dev/null | sed 's/^alias\.//' | LC_ALL=C sort | paste -sd' ' -)"
+git config --global --unset alias.mlfunc
+
 # --- gravação no arquivo de aliases incluído ------------------------------
 AF="$SB/aliases.gitconfig"
 printf '%s\n' \
