@@ -74,17 +74,39 @@ alias_render() {
 	printf '%s\n' "$tmp"
 }
 
-# Põe o conteúdo de <tmp> em <dest> e remove <tmp>. Se <dest> for um symlink
-# (layout comum de gerenciadores de dotfiles), escreve através dele para
-# preservar o link e o arquivo-alvo real; senão faz mv (atômico quando <tmp>
-# está no mesmo diretório, ver alias_render).
-replace_file() {
-	if [ -L "$2" ]; then
-		cat "$1" >"$2"
-		rm -f "$1"
-	else
-		mv "$1" "$2"
+# Modo octal de <path> (GNU coreutils ou BSD/macOS); vazio se indisponível.
+file_mode() {
+	stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1" 2>/dev/null || true
+}
+
+# Segue a cadeia de symlinks de <path> (nível a nível, com teto) e ecoa o
+# arquivo real no fim. Alvo relativo resolve contra o diretório do link.
+resolve_link() {
+	p="$1"
+	i=0
+	while [ -L "$p" ] && [ "$i" -lt 40 ]; do
+		t="$(readlink "$p")"
+		case "$t" in
+		/*) p="$t" ;;
+		*) p="$(dirname -- "$p")/$t" ;;
+		esac
+		i=$((i + 1))
+	done
+	printf '%s\n' "$p"
+}
+
+# Reescreve o arquivo de aliases <dest> ordenado e com o cabeçalho, lendo os
+# aliases de <from> ("" = config mesclado). Segue symlink até o arquivo real,
+# grava por rename atômico (o temporário nasce no diretório dele) e preserva
+# o modo do arquivo.
+write_aliases() {
+	real="$(resolve_link "$2")"
+	tmp="$(alias_render "$1" "$(dirname -- "$real")")"
+	if [ -e "$real" ]; then
+		m="$(file_mode "$real")"
+		[ -n "$m" ] && chmod "$m" "$tmp" 2>/dev/null || :
 	fi
+	mv "$tmp" "$real"
 }
 
 # Exporta a seção [alias] em formato gitconfig. Sem <target>, escreve na
@@ -92,8 +114,7 @@ replace_file() {
 alias_export() {
 	target="${1:-}"
 	if [ -n "$target" ]; then
-		tmp="$(alias_render '' "$(dirname -- "$target")")"
-		replace_file "$tmp" "$target"
+		write_aliases '' "$target"
 		echo "Aliases exportados para $target" >&2
 	else
 		tmp="$(alias_render '')"
@@ -106,8 +127,7 @@ alias_export() {
 # chamado após cada gravação no arquivo de aliases versionado, para manter o
 # diff de commit mínimo.
 alias_normalize() {
-	tmp="$(alias_render "$1" "$(dirname -- "$1")")"
-	replace_file "$tmp" "$1"
+	write_aliases "$1" "$1"
 }
 
 # Descobre o arquivo de aliases versionado: o primeiro caminho em
