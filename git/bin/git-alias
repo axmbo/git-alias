@@ -131,7 +131,16 @@ main() {
 			echo "Erro: Informe o nome do atalho para remover. Ex: git alias --unset <nome>" >&2
 			return 2
 		fi
-		if git config --global --unset "alias.$2" 2>/dev/null; then
+		removed=0
+		f="$(alias_file)"
+		if [ -n "$f" ] && git config --file "$f" --unset-all "alias.$2" 2>/dev/null; then
+			alias_normalize "$f"
+			removed=1
+		fi
+		if git config --global --unset-all "alias.$2" 2>/dev/null; then
+			removed=1
+		fi
+		if [ "$removed" -eq 1 ]; then
 			echo "Alias '$2' removido com sucesso!"
 		else
 			echo "Aviso: O alias '$2' não existe ou já foi removido."
