@@ -65,8 +65,8 @@ alias_render() {
 		printf '# Gerado por: git alias --export\n'
 		printf '# Nao edite a mao; rode o comando novamente para atualizar.\n\n'
 	} >"$tmp"
-	gc "$from" --get-regexp '^alias\.' 2>/dev/null \
-		| cut -d. -f2- | cut -d' ' -f1 | LC_ALL=C sort -u \
+	gc "$from" --name-only --get-regexp '^alias\.' 2>/dev/null \
+		| sed 's/^alias\.//' | LC_ALL=C sort -u \
 		| while IFS= read -r name; do
 			[ "$name" = "alias" ] && continue
 			git config --file "$tmp" "alias.$name" "$(gc "$from" --get "alias.$name")"
