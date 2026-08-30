@@ -133,14 +133,17 @@ alias_normalize() {
 # Descobre o arquivo de aliases versionado: o primeiro caminho em
 # include.path (do config global) cujo conteúdo tem o cabeçalho que este
 # script escreve em --export. Escreve o caminho na saída padrão, ou nada se
-# nenhum casar. Expande "~" no começo do caminho; ignora o que não for
-# arquivo legível.
+# nenhum casar. Resolve "~/" e caminho relativo (contra $HOME, onde mora o
+# ~/.gitconfig; um global fora de $HOME, ex. XDG, e "~user/" ficam de fora);
+# ignora o que não for arquivo legível.
 alias_file() {
 	git config --global --get-all include.path 2>/dev/null \
 		| while IFS= read -r p; do
 			case "$p" in
+			/*) ;;
 			'~') p="$HOME" ;;
 			'~/'*) p="$HOME/${p#'~/'}" ;;
+			*) p="$HOME/$p" ;;
 			esac
 			[ -f "$p" ] || continue
 			if head -n 3 "$p" | grep -qF '# Gerado por: git alias --export'; then
