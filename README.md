@@ -7,9 +7,11 @@ Git e a implementação do subcomando `git alias`.
 
 ```
 git/
-  aliases.gitconfig   # seção [alias] gerada por `git alias --export`
+  aliases.gitconfig   # seção [alias]; git alias grava aqui, sempre ordenada
   bin/
     git-alias         # implementação do subcomando `git alias`
+docs/
+  adr/                # decisões de arquitetura (ADR)
 tests/
   git-alias.sh        # testes do script (HOME isolado)
 install.sh            # liga os dois mecanismos de instalação
@@ -62,24 +64,43 @@ git alias <nome> '<cmd>'         Cria ou atualiza um alias
 git alias --unset <nome>         Remove um alias
 ```
 
+`git alias <nome> '<cmd>'` e `git alias --unset <nome>` gravam no arquivo de
+aliases incluído no seu `~/.gitconfig` (ver
+[versionamento](#versionamento-dos-aliases)); sem esse arquivo, caem no
+`git config --global` e avisam.
+
 ### `git alias --help` não funciona
 
 O Git intercepta `--help` antes de executar o subcomando — tenta abrir a man
 page `git-alias`, que não existe. Use `git alias` ou `git alias help`.
 
-## Backup e versionamento dos aliases
+## Versionamento dos aliases
+
+Com o `install.sh` rodado, o `git/aliases.gitconfig` está no `include.path`
+do seu `~/.gitconfig`. A partir daí, **`git alias <nome> '<cmd>'` e
+`git alias --unset <nome>` gravam direto nesse arquivo** — ele é reconhecido
+pelo cabeçalho `# Gerado por: git alias --export` — e a seção `[alias]` é
+mantida em ordem alfabética (`LC_ALL=C`, estável entre máquinas). Cada
+criação ou remoção já produz um diff pronto para commit.
+
+Sem arquivo incluído detectado, os dois comandos caem no `git config
+--global` e avisam: o alias **não** foi para um arquivo versionado.
+
+O `--unset` remove o alias do arquivo incluído **e** do `--global`, para não
+deixar uma cópia órfã fazendo sombra.
+
+Detalhes em [docs/adr/0001-git-alias-grava-no-arquivo-de-aliases.md](docs/adr/0001-git-alias-grava-no-arquivo-de-aliases.md).
+
+### `--export`: reconstruir o arquivo do zero
 
 ```sh
 git alias --export ~/Dev/dotfiles/git/aliases.gitconfig
 ```
 
-Regenera `git/aliases.gitconfig` a partir do seu config atual. O dispatcher
-`alias.alias` é omitido de propósito (senão faria sombra no script). Depois é
-só commitar o arquivo.
-
-É **mão única**: `aliases.gitconfig` é derivado do seu config, não o
-contrário. Em runtime, o `include.path` faz o caminho de volta (arquivo →
-config). Rodar `--export` de outra máquina com aliases diferentes
+Regenera `git/aliases.gitconfig` inteiro a partir do config mesclado, já
+ordenado. Útil na primeira migração ou para consolidar aliases criados antes
+desta mudança. O dispatcher `alias.alias` é omitido de propósito (senão faria
+sombra no script). Rodar `--export` de outra máquina com aliases diferentes
 sobrescreve o arquivo — trate o commit como o estado canônico.
 
 ## Testes
