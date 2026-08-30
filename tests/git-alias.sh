@@ -54,8 +54,9 @@ git config --global alias.alias '!true'
 check "--list omite alias.alias" \
 	"" "$("$SCRIPT" --list | grep '^alias ' || true)"
 
-check "--unset remove" \
-	"Alias 'foo' removido com sucesso!" "$("$SCRIPT" --unset foo)"
+check "--unset sem arquivo incluído: remove do --global com aviso" \
+	"Alias 'foo' removido do git config --global (nenhum arquivo de aliases incluído encontrado)." \
+	"$("$SCRIPT" --unset foo)"
 check "--unset de alias ausente avisa" \
 	"Aviso: O alias 'foo' não existe ou já foi removido." "$("$SCRIPT" --unset foo)"
 check "--unset sem nome erra" \
@@ -101,17 +102,33 @@ check "arquivo incluído fica em ordem alfabética" \
 check "cabeçalho preservado após gravar" \
 	"# Gerado por: git alias --export" "$(head -n1 "$AF")"
 
+# cria alias que já tinha cópia obsoleta no --global (usuário vindo da versão
+# anterior do script, que sempre gravava lá): a cópia órfã é removida.
+git config --global alias.comshadow '!echo antigo-global'
+"$SCRIPT" comshadow '!echo do-arquivo' >/dev/null
+check "cria alias: cópia obsoleta sai do ~/.gitconfig" \
+	"" "$(git config --file "$GIT_CONFIG_GLOBAL" alias.comshadow 2>/dev/null || true)"
+check "cria alias: valor efetivo passa a ser o do arquivo" \
+	"!echo do-arquivo" "$(git config alias.comshadow)"
+check "cria alias: mensagem avisa remoção da cópia obsoleta" \
+	"Alias 'shadowmsg' gravado em $AF (cópia obsoleta em git config --global removida)." \
+	"$(git config --global alias.shadowmsg x; "$SCRIPT" shadowmsg '!echo z')"
+
 check "--unset remove do arquivo incluído" \
-	"Alias 'novo' removido com sucesso!" "$("$SCRIPT" --unset novo)"
+	"Alias 'novo' removido de $AF." "$("$SCRIPT" --unset novo)"
 check "--unset: alias sai do arquivo incluído" \
 	"" "$(git config --file "$AF" alias.novo 2>/dev/null || true)"
+check "--unset de alias só no --global, com arquivo incluído presente" \
+	"Alias 'sonoglobal' removido do git config --global (não estava no arquivo de aliases)." \
+	"$(git config --global alias.sonoglobal x; "$SCRIPT" --unset sonoglobal)"
 check "--unset: arquivo incluído segue ordenado e com cabeçalho" \
-	"# Gerado por: git alias --export|outro zz" \
+	"# Gerado por: git alias --export|comshadow outro shadowmsg zz" \
 	"$(head -n1 "$AF")|$(git config --file "$AF" --get-regexp '^alias\.' | cut -d. -f2- | cut -d' ' -f1 | paste -sd' ' -)"
 
 git config --file "$AF" alias.dupe '!echo do-arquivo'
 git config --global alias.dupe '!echo do-global'
-"$SCRIPT" --unset dupe >/dev/null
+check "--unset das duas cópias: mensagem cita arquivo e --global" \
+	"Alias 'dupe' removido de $AF e do git config --global." "$("$SCRIPT" --unset dupe)"
 check "--unset remove a cópia do arquivo e a do --global" \
 	"|" "$(git config --file "$AF" alias.dupe 2>/dev/null || true)|$(git config --file "$GIT_CONFIG_GLOBAL" alias.dupe 2>/dev/null || true)"
 
