@@ -36,24 +36,44 @@ Exemplos:
 EOF
 }
 
-# Exporta a seção [alias] em formato gitconfig. O escaping fica a cargo do
-# próprio "git config --file", que também garante um arquivo reimportável via
-# [include]. O dispatcher "alias.alias" é omitido de propósito: quando este
-# script está no PATH, ele é a implementação de "git alias", e uma cópia
-# inline no arquivo exportado faria sombra nele.
-alias_export() {
-	target="${1:-}"
+# Cria um arquivo temporário com o cabeçalho padrão seguido da seção [alias]
+# em ordem alfabética estável (LC_ALL=C, para não variar com o locale) e ecoa
+# o caminho dele. $1: arquivo-fonte a ler; vazio = git config mesclado
+# (global + includes). O escaping fica a cargo do próprio "git config
+# --file", que também garante um arquivo reimportável via [include]. O
+# dispatcher "alias.alias" é omitido de propósito: quando este script está no
+# PATH, ele é a implementação de "git alias", e uma cópia inline no arquivo
+# faria sombra nele.
+alias_render() {
+	from="${1:-}"
 	tmp="$(mktemp)"
 	{
 		printf '# Gerado por: git alias --export\n'
 		printf '# Nao edite a mao; rode o comando novamente para atualizar.\n\n'
 	} >"$tmp"
-	git config --get-regexp '^alias\.' 2>/dev/null \
-		| cut -d. -f2- | cut -d' ' -f1 | sort -u \
+	if [ -n "$from" ]; then
+		git config --file "$from" --get-regexp '^alias\.' 2>/dev/null
+	else
+		git config --get-regexp '^alias\.' 2>/dev/null
+	fi \
+		| cut -d. -f2- | cut -d' ' -f1 | LC_ALL=C sort -u \
 		| while IFS= read -r name; do
 			[ "$name" = "alias" ] && continue
-			git config --file "$tmp" "alias.$name" "$(git config --get "alias.$name")"
+			if [ -n "$from" ]; then
+				val="$(git config --file "$from" --get "alias.$name")"
+			else
+				val="$(git config --get "alias.$name")"
+			fi
+			git config --file "$tmp" "alias.$name" "$val"
 		done
+	printf '%s\n' "$tmp"
+}
+
+# Exporta a seção [alias] em formato gitconfig. Sem <target>, escreve na
+# saída padrão; com <target>, substitui o arquivo.
+alias_export() {
+	target="${1:-}"
+	tmp="$(alias_render '')"
 	if [ -n "$target" ]; then
 		mv "$tmp" "$target"
 		echo "Aliases exportados para $target" >&2
@@ -63,25 +83,12 @@ alias_export() {
 	fi
 }
 
-# Reescreve <arquivo> com o cabeçalho padrão e a seção [alias] em ordem
-# alfabética estável (LC_ALL=C, para não variar com o locale da máquina).
-# Idempotente; chamado após cada gravação no arquivo de aliases versionado,
-# para manter o diff de commit mínimo.
+# Reescreve <arquivo> ordenado e com o cabeçalho padrão. Idempotente;
+# chamado após cada gravação no arquivo de aliases versionado, para manter o
+# diff de commit mínimo.
 alias_normalize() {
-	src="$1"
-	tmp="$(mktemp)"
-	{
-		printf '# Gerado por: git alias --export\n'
-		printf '# Nao edite a mao; rode o comando novamente para atualizar.\n\n'
-	} >"$tmp"
-	git config --file "$src" --get-regexp '^alias\.' 2>/dev/null \
-		| cut -d. -f2- | cut -d' ' -f1 | LC_ALL=C sort -u \
-		| while IFS= read -r name; do
-			[ "$name" = "alias" ] && continue
-			git config --file "$tmp" "alias.$name" \
-				"$(git config --file "$src" --get "alias.$name")"
-		done
-	mv "$tmp" "$src"
+	tmp="$(alias_render "$1")"
+	mv "$tmp" "$1"
 }
 
 # Descobre o arquivo de aliases versionado: o primeiro caminho em
