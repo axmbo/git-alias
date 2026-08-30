@@ -202,6 +202,18 @@ check "--export para symlink escreve no arquivo real" \
 check "--export para symlink preserva o modo 0644 do alvo" \
 	"644" "$(mode_of "$EXPREAL")"
 
+# --- include.path relativo (git o resolve contra o dir do ~/.gitconfig) --
+mkdir -p "$SB/relat-dir"
+RELF="$SB/relat-dir/aliases.gitconfig"
+printf '%s\n' '# Gerado por: git alias --export' '# x' '' '[alias]' >"$RELF"
+git config --global --unset-all include.path
+git config --global --add include.path "relat-dir/aliases.gitconfig"
+( cd "$SB/real" && "$SCRIPT" relat '!echo r' >/dev/null )
+check "include.path relativo é detectado (grava no arquivo incluído)" \
+	"!echo r" "$(git config --file "$RELF" alias.relat 2>/dev/null || true)"
+check "include.path relativo: nada foi para o ~/.gitconfig cru" \
+	"" "$(git config --file "$GIT_CONFIG_GLOBAL" alias.relat 2>/dev/null || true)"
+
 echo
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
