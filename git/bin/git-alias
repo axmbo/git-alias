@@ -63,6 +63,27 @@ alias_export() {
 	fi
 }
 
+# Descobre o arquivo de aliases versionado: o primeiro caminho em
+# include.path (do config global) cujo conteúdo tem o cabeçalho que este
+# script escreve em --export. Escreve o caminho na saída padrão, ou nada se
+# nenhum casar. Expande "~" no começo do caminho; ignora o que não for
+# arquivo legível.
+alias_file() {
+	git config --global --get-all include.path 2>/dev/null \
+		| while IFS= read -r p; do
+			case "$p" in
+			'~') p="$HOME" ;;
+			'~/'*) p="$HOME/${p#'~/'}" ;;
+			esac
+			[ -f "$p" ] || continue
+			if head -n 3 "$p" | grep -qF '# Gerado por: git alias --export'; then
+				printf '%s\n' "$p"
+				break
+			fi
+		done
+	return 0
+}
+
 main() {
 	if [ "$#" -eq 0 ]; then
 		usage
@@ -99,8 +120,14 @@ main() {
 	esac
 
 	if [ "$#" -eq 2 ]; then
-		git config --global "alias.$1" "$2"
-		echo "Alias '$1' configurado com sucesso!"
+		f="$(alias_file)"
+		if [ -n "$f" ]; then
+			git config --file "$f" "alias.$1" "$2"
+			echo "Alias '$1' gravado em $f."
+		else
+			git config --global "alias.$1" "$2"
+			echo "Alias '$1' gravado no git config --global (nenhum arquivo de aliases incluído encontrado)."
+		fi
 		return 0
 	fi
 
