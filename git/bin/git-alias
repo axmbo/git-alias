@@ -63,6 +63,27 @@ alias_export() {
 	fi
 }
 
+# Reescreve <arquivo> com o cabeçalho padrão e a seção [alias] em ordem
+# alfabética estável (LC_ALL=C, para não variar com o locale da máquina).
+# Idempotente; chamado após cada gravação no arquivo de aliases versionado,
+# para manter o diff de commit mínimo.
+alias_normalize() {
+	src="$1"
+	tmp="$(mktemp)"
+	{
+		printf '# Gerado por: git alias --export\n'
+		printf '# Nao edite a mao; rode o comando novamente para atualizar.\n\n'
+	} >"$tmp"
+	git config --file "$src" --get-regexp '^alias\.' 2>/dev/null \
+		| cut -d. -f2- | cut -d' ' -f1 | LC_ALL=C sort -u \
+		| while IFS= read -r name; do
+			[ "$name" = "alias" ] && continue
+			git config --file "$tmp" "alias.$name" \
+				"$(git config --file "$src" --get "alias.$name")"
+		done
+	mv "$tmp" "$src"
+}
+
 # Descobre o arquivo de aliases versionado: o primeiro caminho em
 # include.path (do config global) cujo conteúdo tem o cabeçalho que este
 # script escreve em --export. Escreve o caminho na saída padrão, ou nada se
@@ -123,6 +144,7 @@ main() {
 		f="$(alias_file)"
 		if [ -n "$f" ]; then
 			git config --file "$f" "alias.$1" "$2"
+			alias_normalize "$f"
 			echo "Alias '$1' gravado em $f."
 		else
 			git config --global "alias.$1" "$2"
