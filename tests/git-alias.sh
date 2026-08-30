@@ -95,6 +95,12 @@ check "cria alias não escreve a chave crua no ~/.gitconfig" \
 check "cria alias no arquivo incluído: mensagem cita o arquivo" \
 	"Alias 'outro' gravado em $AF." "$("$SCRIPT" outro '!echo outro')"
 
+check "arquivo incluído fica em ordem alfabética" \
+	"novo outro zz" \
+	"$(git config --file "$AF" --get-regexp '^alias\.' | cut -d. -f2- | cut -d' ' -f1 | paste -sd' ' -)"
+check "cabeçalho preservado após gravar" \
+	"# Gerado por: git alias --export" "$(head -n1 "$AF")"
+
 echo
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
