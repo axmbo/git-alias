@@ -132,6 +132,27 @@ check "--unset das duas cópias: mensagem cita arquivo e --global" \
 check "--unset remove a cópia do arquivo e a do --global" \
 	"|" "$(git config --file "$AF" alias.dupe 2>/dev/null || true)|$(git config --file "$GIT_CONFIG_GLOBAL" alias.dupe 2>/dev/null || true)"
 
+# --- destino do include.path é um symlink (layout comum de dotfiles) ------
+mkdir -p "$SB/real"
+REAL="$SB/real/aliases.gitconfig"
+printf '%s\n' \
+	'# Gerado por: git alias --export' \
+	'# Nao edite a mao; rode o comando novamente para atualizar.' \
+	'' \
+	'[alias]' >"$REAL"
+LINK="$SB/linked-aliases.gitconfig"
+ln -s "$REAL" "$LINK"
+git config --global --unset-all include.path
+git config --global --add include.path "$LINK"
+
+"$SCRIPT" viasym '!echo sym' >/dev/null
+check "gravação preserva o symlink apontado por include.path" \
+	"symlink" "$([ -L "$LINK" ] && echo symlink || echo regular)"
+check "gravação chega no arquivo real por trás do symlink" \
+	"!echo sym" "$(git config --file "$REAL" alias.viasym)"
+check "arquivo real segue com cabeçalho após gravar via symlink" \
+	"# Gerado por: git alias --export" "$(head -n1 "$REAL")"
+
 echo
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
