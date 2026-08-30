@@ -29,7 +29,11 @@ o **arquivo de aliases incluído**, quando houver um.
 - **Detecção:** varre `git config --global --get-all include.path` e escolhe o
   primeiro arquivo cujo conteúdo tem o cabeçalho que o próprio script escreve
   (`# Gerado por: git alias --export`). Só reconhece arquivos que ele mesmo
-  gerou; sobrevive a rename.
+  gerou; sobrevive a rename. Resolve caminho absoluto, `~/…` e caminho
+  relativo (contra `$HOME`, o diretório do `~/.gitconfig`). Um config global
+  fora de `$HOME` (layout XDG) ou um `~outrousuário/…` não são resolvidos e
+  caem no fallback — o `install.sh` grava caminho absoluto, então o setup
+  suportado não depende disso.
 - **Fallback:** se nenhum arquivo for detectado, grava em
   `git config --global` como antes, mas imprime um aviso de que o alias não
   foi para um arquivo versionado.
@@ -38,15 +42,21 @@ o **arquivo de aliases incluído**, quando houver um.
   posicionada depois da linha `[include]` do `~/.gitconfig` faz sombra no
   arquivo, e o `--export` (config mesclado, last-wins) a reescreveria por
   cima do valor versionado. As mensagens informam de onde o alias saiu.
-- **Destino symlink:** se o `include.path` aponta para um symlink (comum em
-  gerenciadores de dotfiles), a substituição do arquivo escreve através do
-  link (`cat`), preservando-o; caso contrário é um `mv` de um temporário
-  criado no mesmo diretório, portanto rename atômico.
+- **Substituição do arquivo:** a gravação sempre resolve a cadeia de symlinks
+  do destino até o arquivo real (comum em gerenciadores de dotfiles), cria o
+  temporário no diretório dele e faz `mv` (rename atômico), copiando antes o
+  modo do arquivo real para o temporário — senão o destino herdaria o `0600`
+  do `mktemp`. O(s) symlink(s) ficam intactos.
+- **Nomes de alias:** a leitura usa `git config --name-only --get-regexp`
+  (git ≥ 2.9) para listar só as chaves; o parsing anterior (`--get-regexp |
+  cut`) quebrava diante de um valor de alias com newline embutido, gerando
+  nomes falsos que faziam `--export`/normalização abortarem.
 - **Ordem alfabética:** toda gravação no arquivo é seguida de uma
   normalização que reescreve a seção `[alias]` ordenada (`LC_ALL=C`, ordem
   estável independente de locale), com o cabeçalho padrão. O `--export` passa
-  a usar a mesma rotina. Objetivo: diffs mínimos e determinísticos no
-  versionamento.
+  a usar a mesma rotina. Se a normalização falhar (disco cheio, permissão), o
+  alias já gravado é mantido e o script apenas avisa. Objetivo: diffs mínimos
+  e determinísticos no versionamento.
 
 ## Consequências
 

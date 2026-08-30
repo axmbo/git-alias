@@ -91,8 +91,12 @@ Tanto a criação quanto o `--unset` também apagam qualquer cópia do alias no
 `~/.gitconfig`, faz sombra no arquivo (e o `--export`, que lê config
 mesclado, a ressuscitaria). As mensagens dizem de onde o alias saiu.
 
-Se o `include.path` apontar para um symlink (comum com gerenciadores de
-dotfiles), a gravação escreve através dele e preserva o link.
+O `include.path` pode ser caminho absoluto, `~/…` ou relativo (resolvido
+contra `$HOME`); um config global fora de `$HOME` (layout XDG) não é
+resolvido e cai no fallback. Se o caminho for um symlink (ou cadeia deles,
+comum com gerenciadores de dotfiles), a gravação resolve até o arquivo real,
+troca-o por rename atômico e preserva tanto o(s) link(s) quanto o modo do
+arquivo.
 
 Detalhes em [docs/adr/0001-git-alias-grava-no-arquivo-de-aliases.md](docs/adr/0001-git-alias-grava-no-arquivo-de-aliases.md).
 
