@@ -33,8 +33,15 @@ o **arquivo de aliases incluído**, quando houver um.
 - **Fallback:** se nenhum arquivo for detectado, grava em
   `git config --global` como antes, mas imprime um aviso de que o alias não
   foi para um arquivo versionado.
-- **`--unset`:** remove o alias de onde ele estiver — do arquivo incluído
-  **e** do `--global` — para não deixar cópia órfã fazendo sombra.
+- **Cópia no `--global`:** tanto a criação quanto o `--unset` rodam
+  `git config --global --unset-all` no alias. Uma cópia no `--global`
+  posicionada depois da linha `[include]` do `~/.gitconfig` faz sombra no
+  arquivo, e o `--export` (config mesclado, last-wins) a reescreveria por
+  cima do valor versionado. As mensagens informam de onde o alias saiu.
+- **Destino symlink:** se o `include.path` aponta para um symlink (comum em
+  gerenciadores de dotfiles), a substituição do arquivo escreve através do
+  link (`cat`), preservando-o; caso contrário é um `mv` de um temporário
+  criado no mesmo diretório, portanto rename atômico.
 - **Ordem alfabética:** toda gravação no arquivo é seguida de uma
   normalização que reescreve a seção `[alias]` ordenada (`LC_ALL=C`, ordem
   estável independente de locale), com o cabeçalho padrão. O `--export` passa

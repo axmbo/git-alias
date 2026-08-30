@@ -86,8 +86,13 @@ criação ou remoção já produz um diff pronto para commit.
 Sem arquivo incluído detectado, os dois comandos caem no `git config
 --global` e avisam: o alias **não** foi para um arquivo versionado.
 
-O `--unset` remove o alias do arquivo incluído **e** do `--global`, para não
-deixar uma cópia órfã fazendo sombra.
+Tanto a criação quanto o `--unset` também apagam qualquer cópia do alias no
+`git config --global` — se ela ficar depois da linha `[include]` no
+`~/.gitconfig`, faz sombra no arquivo (e o `--export`, que lê config
+mesclado, a ressuscitaria). As mensagens dizem de onde o alias saiu.
+
+Se o `include.path` apontar para um symlink (comum com gerenciadores de
+dotfiles), a gravação escreve através dele e preserva o link.
 
 Detalhes em [docs/adr/0001-git-alias-grava-no-arquivo-de-aliases.md](docs/adr/0001-git-alias-grava-no-arquivo-de-aliases.md).
 
