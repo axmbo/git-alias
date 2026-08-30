@@ -42,8 +42,9 @@ check "consulta alias existente" \
 	"co = checkout" "$("$SCRIPT" co)"
 check "consulta alias inexistente" \
 	"Aviso: O alias 'nada' não foi encontrado." "$("$SCRIPT" nada)"
-check "cria alias" \
-	"Alias 'foo' configurado com sucesso!" "$("$SCRIPT" foo '!echo foo')"
+check "cria alias sem arquivo incluído: fallback --global com aviso" \
+	"Alias 'foo' gravado no git config --global (nenhum arquivo de aliases incluído encontrado)." \
+	"$("$SCRIPT" foo '!echo foo')"
 check "alias recém-criado é consultável" \
 	"foo = !echo foo" "$("$SCRIPT" foo)"
 check "--list traz co" \
@@ -75,6 +76,24 @@ check "--export para arquivo: gone reimportável" \
 	"!git branch # limpa" "$(git config --file "$EXP" alias.gone)"
 check "--export para arquivo: omite alias.alias" \
 	"" "$(git config --file "$EXP" alias.alias 2>/dev/null || true)"
+
+# --- gravação no arquivo de aliases incluído ------------------------------
+AF="$SB/aliases.gitconfig"
+printf '%s\n' \
+	'# Gerado por: git alias --export' \
+	'# Nao edite a mao; rode o comando novamente para atualizar.' \
+	'' \
+	'[alias]' \
+	'	zz = !echo zz' >"$AF"
+git config --global --add include.path "$AF"
+
+"$SCRIPT" novo '!echo novo' >/dev/null
+check "cria alias grava no arquivo incluído" \
+	"!echo novo" "$(git config --file "$AF" alias.novo)"
+check "cria alias não escreve a chave crua no ~/.gitconfig" \
+	"" "$(grep -F 'novo' "$GIT_CONFIG_GLOBAL" || true)"
+check "cria alias no arquivo incluído: mensagem cita o arquivo" \
+	"Alias 'outro' gravado em $AF." "$("$SCRIPT" outro '!echo outro')"
 
 echo
 echo "pass=$pass fail=$fail"
