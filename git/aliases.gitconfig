@@ -1,0 +1,10 @@
+# Gerado por: git alias --export
+# Nao edite a mao; rode o comando novamente para atualizar.
+
+[alias]
+	br = branch
+	ci = commit
+	co = checkout
+	gone = "!git branch -vv | grep ': gone]' | awk '{print $1}' | xargs -r git branch -D # Limpa as branches locais orfas"
+	st = status
+	stl = status -- .

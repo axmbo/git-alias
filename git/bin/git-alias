@@ -1,0 +1,121 @@
+#!/usr/bin/env sh
+# git-alias — gerencia os aliases do Git (entradas "alias.*" do git config).
+#
+# Uso:
+#   git alias                        Mostra a sintaxe de uso
+#   git alias help                   Idem (veja a nota sobre --help)
+#   git alias --list                 Lista todos os aliases
+#   git alias --export [<arquivo>]   Exporta em formato gitconfig; sem
+#                                    <arquivo>, escreve na saída padrão
+#   git alias <nome>                 Mostra a definição de um alias
+#   git alias <nome> '<cmd>'         Cria ou atualiza um alias
+#   git alias --unset <nome>         Remove um alias
+#
+# Nota: "git alias --help" é interceptado pelo próprio Git (ele tenta abrir a
+# man page "git-alias", que não existe). Use "git alias" ou "git alias help".
+
+set -eu
+
+usage() {
+	cat <<'EOF'
+Sintaxe de uso:
+  git alias                        (Mostra esta ajuda)
+  git alias help                   (idem; '--help' e capturado pelo Git)
+  git alias --list                 (Lista todos os atalhos)
+  git alias --export [<arquivo>]   (Exporta os atalhos em formato gitconfig;
+                                    sem <arquivo>, escreve na saida padrao)
+  git alias <nome>                 (Mostra a definicao de um atalho especifico)
+  git alias <nome> '<cmd>'         (Cria ou atualiza um atalho)
+  git alias --unset <nome>         (Remove um atalho)
+
+Exemplos:
+  git alias teste '!echo teste # Meu comando'
+  git alias gone
+  git alias --unset teste
+  git alias --export ~/Dev/dotfiles/git/aliases.gitconfig
+EOF
+}
+
+# Exporta a seção [alias] em formato gitconfig. O escaping fica a cargo do
+# próprio "git config --file", que também garante um arquivo reimportável via
+# [include]. O dispatcher "alias.alias" é omitido de propósito: quando este
+# script está no PATH, ele é a implementação de "git alias", e uma cópia
+# inline no arquivo exportado faria sombra nele.
+alias_export() {
+	target="${1:-}"
+	tmp="$(mktemp)"
+	{
+		printf '# Gerado por: git alias --export\n'
+		printf '# Nao edite a mao; rode o comando novamente para atualizar.\n\n'
+	} >"$tmp"
+	git config --get-regexp '^alias\.' 2>/dev/null \
+		| cut -d. -f2- | cut -d' ' -f1 | sort -u \
+		| while IFS= read -r name; do
+			[ "$name" = "alias" ] && continue
+			git config --file "$tmp" "alias.$name" "$(git config --get "alias.$name")"
+		done
+	if [ -n "$target" ]; then
+		mv "$tmp" "$target"
+		echo "Aliases exportados para $target" >&2
+	else
+		cat "$tmp"
+		rm -f "$tmp"
+	fi
+}
+
+main() {
+	if [ "$#" -eq 0 ]; then
+		usage
+		return 0
+	fi
+
+	case "$1" in
+	help | -h | --help)
+		usage
+		return 0
+		;;
+	--list)
+		git config --get-regexp '^alias\.' \
+			| grep -v '^alias\.alias ' \
+			| sed 's/alias\.\([^ ]*\) \(.*\)/\1 = \2/'
+		return 0
+		;;
+	--export)
+		alias_export "${2:-}"
+		return 0
+		;;
+	--unset)
+		if [ -z "${2:-}" ]; then
+			echo "Erro: Informe o nome do atalho para remover. Ex: git alias --unset <nome>" >&2
+			return 2
+		fi
+		if git config --global --unset "alias.$2" 2>/dev/null; then
+			echo "Alias '$2' removido com sucesso!"
+		else
+			echo "Aviso: O alias '$2' não existe ou já foi removido."
+		fi
+		return 0
+		;;
+	esac
+
+	if [ "$#" -eq 2 ]; then
+		git config --global "alias.$1" "$2"
+		echo "Alias '$1' configurado com sucesso!"
+		return 0
+	fi
+
+	if [ "$#" -eq 1 ]; then
+		cmd="$(git config --get "alias.$1" 2>/dev/null || true)"
+		if [ -n "$cmd" ]; then
+			echo "$1 = $cmd"
+		else
+			echo "Aviso: O alias '$1' não foi encontrado."
+		fi
+		return 0
+	fi
+
+	usage
+	return 2
+}
+
+main "$@"
