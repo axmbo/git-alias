@@ -138,17 +138,24 @@ main() {
 			echo "Erro: Informe o nome do atalho para remover. Ex: git alias --unset <nome>" >&2
 			return 2
 		fi
-		removed=0
 		f="$(alias_file)"
+		from_file=0
+		from_global=0
 		if [ -n "$f" ] && git config --file "$f" --unset-all "alias.$2" 2>/dev/null; then
 			alias_normalize "$f"
-			removed=1
+			from_file=1
 		fi
 		if git config --global --unset-all "alias.$2" 2>/dev/null; then
-			removed=1
+			from_global=1
 		fi
-		if [ "$removed" -eq 1 ]; then
-			echo "Alias '$2' removido com sucesso!"
+		if [ "$from_file" -eq 1 ] && [ "$from_global" -eq 1 ]; then
+			echo "Alias '$2' removido de $f e do git config --global."
+		elif [ "$from_file" -eq 1 ]; then
+			echo "Alias '$2' removido de $f."
+		elif [ "$from_global" -eq 1 ] && [ -n "$f" ]; then
+			echo "Alias '$2' removido do git config --global (não estava no arquivo de aliases)."
+		elif [ "$from_global" -eq 1 ]; then
+			echo "Alias '$2' removido do git config --global (nenhum arquivo de aliases incluído encontrado)."
 		else
 			echo "Aviso: O alias '$2' não existe ou já foi removido."
 		fi
@@ -161,7 +168,11 @@ main() {
 		if [ -n "$f" ]; then
 			git config --file "$f" "alias.$1" "$2"
 			alias_normalize "$f"
-			echo "Alias '$1' gravado em $f."
+			if git config --global --unset-all "alias.$1" 2>/dev/null; then
+				echo "Alias '$1' gravado em $f (cópia obsoleta em git config --global removida)."
+			else
+				echo "Alias '$1' gravado em $f."
+			fi
 		else
 			git config --global "alias.$1" "$2"
 			echo "Alias '$1' gravado no git config --global (nenhum arquivo de aliases incluído encontrado)."
