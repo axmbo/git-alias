@@ -101,6 +101,20 @@ check "arquivo incluído fica em ordem alfabética" \
 check "cabeçalho preservado após gravar" \
 	"# Gerado por: git alias --export" "$(head -n1 "$AF")"
 
+check "--unset remove do arquivo incluído" \
+	"Alias 'novo' removido com sucesso!" "$("$SCRIPT" --unset novo)"
+check "--unset: alias sai do arquivo incluído" \
+	"" "$(git config --file "$AF" alias.novo 2>/dev/null || true)"
+check "--unset: arquivo incluído segue ordenado e com cabeçalho" \
+	"# Gerado por: git alias --export|outro zz" \
+	"$(head -n1 "$AF")|$(git config --file "$AF" --get-regexp '^alias\.' | cut -d. -f2- | cut -d' ' -f1 | paste -sd' ' -)"
+
+git config --file "$AF" alias.dupe '!echo do-arquivo'
+git config --global alias.dupe '!echo do-global'
+"$SCRIPT" --unset dupe >/dev/null
+check "--unset remove a cópia do arquivo e a do --global" \
+	"|" "$(git config --file "$AF" alias.dupe 2>/dev/null || true)|$(git config --file "$GIT_CONFIG_GLOBAL" alias.dupe 2>/dev/null || true)"
+
 echo
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
