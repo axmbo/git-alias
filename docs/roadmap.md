@@ -14,17 +14,13 @@
 
 ## Decisões em aberto
 
-### D1 — Repositório próprio ou permanecer no `dotfiles`?
+### D1 — Repositório próprio ou permanecer no `dotfiles`? · **decidido 2026-08-30**
 
-Bloqueia quase todo o resto (tags, CI, README, onde ficam as issues).
-
-- **Repo próprio** (`git-alias`): melhor descoberta ("git alias manager"),
-  release/tag/CHANGELOG próprios, CI dedicado. O `dotfiles` consome como
-  submódulo ou cópia. Toda a documentação e o `docs/` viajam junto.
-- **Permanecer no `dotfiles`**: menos cerimônia agora; o roadmap e os ADRs já
-  estão no lugar. Custo: o `dotfiles` cresce e mistura escopos; tag do
-  `dotfiles` não é tag do `git-alias`.
-- Recomendação do brainstorming: **separar**. Confirmar antes de prosseguir.
+**Resultado: repositório próprio.** Como o repo atual já é 100% `git-alias`,
+ele mesmo vira o repositório da ferramenta (rename, sem extração de
+histórico). Uma coleção de dotfiles pessoais, se existir, será repo separado
+que consome o `git-alias`. Ver
+[docs/adr/0002-repositorio-proprio-para-o-git-alias.md](adr/0002-repositorio-proprio-para-o-git-alias.md).
 
 ### D2 — Licença
 
@@ -35,7 +31,7 @@ MIT é o default para dotfiles/CLI pequeno. Escolha do autor. Sem `LICENSE` não
 
 ## Features pedidas pelo autor
 
-### F1 — Número de versão · **v1.0** · ADR-0002
+### F1 — Número de versão · **v1.0** · ADR-0003
 
 - [ ] Constante `VERSION="X.Y.Z"` no topo de `git-alias`, fonte única da verdade.
 - [ ] `git alias --version` (e `-v`): imprime a constante; se rodando dentro do
@@ -60,7 +56,7 @@ MIT é o default para dotfiles/CLI pequeno. Escolha do autor. Sem `LICENSE` não
       (`# Formato: 1`). Barato agora; mudar o cabeçalho depois é quebra de
       compat que import/export precisa detectar.
 
-### F2 — Import de alias · **v1.0** · ADR-0003
+### F2 — Import de alias · **v1.0** · ADR-0004
 
 - [ ] `git alias --import <arquivo>` (`-` = stdin): lê `alias.*` da fonte,
       funde na seção `[alias]` do arquivo versionado, renormaliza.
@@ -76,7 +72,7 @@ MIT é o default para dotfiles/CLI pequeno. Escolha do autor. Sem `LICENSE` não
 - [ ] Nota de segurança (README + saída do comando): alias com `!` executa
       shell; importar de fonte não confiável = executar comando arbitrário ao
       invocar o alias.
-- [ ] ADR-0003 "Semântica de merge do --import": merge não-destrutivo,
+- [ ] ADR-0004 "Semântica de merge do --import": merge não-destrutivo,
       skip-on-collision, `--overwrite`, `--dry-run`.
 - [ ] (v1.1) `git alias --import <src> <nome>...`: subconjunto nomeado.
 - [ ] (v1.1) `git alias --adopt`: "adotar do `--global`" — funde os aliases do
@@ -157,6 +153,11 @@ MIT é o default para dotfiles/CLI pequeno. Escolha do autor. Sem `LICENSE` não
 
 ### v1.0
 
+- [ ] **Reestruturar para repo de ferramenta** (ADR-0002): rename do repo para
+      `git-alias`; avaliar achatar `git/bin/git-alias` → `bin/git-alias`;
+      `git/aliases.gitconfig` de exemplo vira amostra (`examples/`) ou só
+      documentação; remover `~/Dev/dotfiles` e menções a "dotfiles" da prosa
+      e do `CLAUDE.md`. Faz par com o item **README** abaixo.
 - [ ] **`LICENSE`** (ver D2).
 - [ ] **`CONTRIBUTING.md`**: como rodar os testes; expectativa de TDD;
       Conventional Commits; processo de ADR; shellcheck.
@@ -183,16 +184,18 @@ MIT é o default para dotfiles/CLI pequeno. Escolha do autor. Sem `LICENSE` não
 
 ## Sequência proposta
 
-1. [ ] **D1** — decidir repo próprio vs. permanecer no `dotfiles`.
-2. [ ] Plumbing sem ADR: `LICENSE`, `CONTRIBUTING`, `.editorconfig`, teste de
+1. [x] **D1** — decidido: repositório próprio (ADR-0002).
+2. [ ] **D2** — escolher a licença.
+3. [ ] Plumbing sem ADR: `LICENSE`, `CONTRIBUTING`, `.editorconfig`, teste de
        README único, CI básico (dash/bash/shellcheck).
-3. [ ] **ADR-0002** → F1 (`--version` + CHANGELOG + teste de consistência +
+4. [ ] **ADR-0003** → F1 (`--version` + CHANGELOG + teste de consistência +
        `docs/releasing.md`).
-4. [ ] Lote de polish pequeno: F5 (`--list`), F4 (`--rename`), F6 (guardas),
+5. [ ] Lote de polish pequeno: F5 (`--list`), F4 (`--rename`), F6 (guardas),
        F7 (exit codes).
-5. [ ] F3 (`--doctor`).
-6. [ ] **ADR-0003** → F2 (`--import`).
-7. [ ] F8 (completions).
-8. [ ] Tag **`v1.0.0`**, publicar.
-9. [ ] Backlog v1.1: F9 (man page), F10 (`--edit`), F11 (`--sync`), F2/adopt,
-       F2/subconjunto, F12 (`--local`).
+6. [ ] F3 (`--doctor`).
+7. [ ] **ADR-0004** → F2 (`--import`).
+8. [ ] F8 (completions).
+9. [ ] Reestruturar para repo de ferramenta + reescrever README (ADR-0002).
+10. [ ] Tag **`v1.0.0`**, publicar.
+11. [ ] Backlog v1.1: F9 (man page), F10 (`--edit`), F11 (`--sync`), F2/adopt,
+        F2/subconjunto, F12 (`--local`).
