@@ -22,10 +22,11 @@ histórico). Uma coleção de dotfiles pessoais, se existir, será repo separado
 que consome o `git-alias`. Ver
 [docs/adr/0002-repositorio-proprio-para-o-git-alias.md](adr/0002-repositorio-proprio-para-o-git-alias.md).
 
-### D2 — Licença
+### D2 — Licença · **decidido 2026-08-30**
 
-MIT é o default para dotfiles/CLI pequeno. Escolha do autor. Sem `LICENSE` não
-é código aberto.
+**Resultado: MIT.** Titular "Alexandre Leite", ano 2026. Arquivo `LICENSE` na
+raiz + identificador SPDX no README (e opcionalmente cabeçalho
+`# SPDX-License-Identifier: MIT` no script).
 
 ---
 
@@ -185,9 +186,9 @@ MIT é o default para dotfiles/CLI pequeno. Escolha do autor. Sem `LICENSE` não
 ## Sequência proposta
 
 1. [x] **D1** — decidido: repositório próprio (ADR-0002).
-2. [ ] **D2** — escolher a licença.
-3. [ ] Plumbing sem ADR: `LICENSE`, `CONTRIBUTING`, `.editorconfig`, teste de
-       README único, CI básico (dash/bash/shellcheck).
+2. [x] **D2** — decidido: MIT.
+3. [ ] Plumbing sem ADR: `LICENSE` (MIT), `CONTRIBUTING`, `.editorconfig`,
+       teste de README único, CI básico (dash/bash/shellcheck).
 4. [ ] **ADR-0003** → F1 (`--version` + CHANGELOG + teste de consistência +
        `docs/releasing.md`).
 5. [ ] Lote de polish pequeno: F5 (`--list`), F4 (`--rename`), F6 (guardas),
