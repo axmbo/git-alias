@@ -25,6 +25,9 @@ trap 'rm -rf "$SB"' EXIT
 export HOME="$SB"
 export GIT_CONFIG_GLOBAL="$SB/.gitconfig"
 export GIT_CONFIG_SYSTEM=/dev/null
+# Impede que o "git describe" novo (usado por --version) escape do sandbox e
+# encontre um repositório real acima de /tmp.
+export GIT_CEILING_DIRECTORIES="$SB"
 cd "$SB"
 
 git config --global user.email t@t
@@ -213,6 +216,66 @@ check "include.path relativo é detectado (grava no arquivo incluído)" \
 	"!echo r" "$(git config --file "$RELF" alias.relat 2>/dev/null || true)"
 check "include.path relativo: nada foi para o ~/.gitconfig cru" \
 	"" "$(git config --file "$GIT_CONFIG_GLOBAL" alias.relat 2>/dev/null || true)"
+
+# --- git alias --version / -v ------------------------------------------------
+# Cópia do script fora de qualquer repositório git: exercita o caminho em que
+# git describe não é fonte (só a constante VERSION é impressa).
+mkdir -p "$SB/pathbin"
+cp "$SCRIPT" "$SB/pathbin/git-alias"
+chmod +x "$SB/pathbin/git-alias"
+BARE="$("$SB/pathbin/git-alias" --version)"
+check "--version fora de um checkout imprime só X.Y.Z" \
+	"sim" "$(printf '%s' "$BARE" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' && echo sim || echo nao)"
+check "-v é sinônimo de --version" \
+	"$BARE" "$("$SB/pathbin/git-alias" -v)"
+
+# Cópia num checkout git de mentira (hermético — não depende de como esta
+# suíte foi obtida): --version anexa o "git describe" desse repo, verbatim.
+# Tag no HEAD e árvore limpa => o describe é exatamente o nome da tag.
+mkdir -p "$SB/checkout/git/bin"
+cp "$SCRIPT" "$SB/checkout/git/bin/git-alias"
+chmod +x "$SB/checkout/git/bin/git-alias"
+(
+	cd "$SB/checkout"
+	git init -q .
+	git add -A
+	git commit -q -m v0
+	git tag marco
+) 2>/dev/null
+check "--version de dentro de um checkout anexa o git describe" \
+	"$BARE (marco)" "$("$SB/checkout/git/bin/git-alias" --version)"
+
+# O Git NÃO intercepta "--version" de um subcomando externo (ao contrário de
+# "--help", que ele desvia para a man page inexistente "git-alias"): com o
+# script no PATH, "git alias --version" executa o próprio script. Guarda de
+# regressão contra mudança de comportamento entre versões do Git.
+VIA_GIT="$(PATH="$SB/pathbin:$PATH" git alias --version 2>&1 || true)"
+check "git não intercepta --version de subcomando externo" \
+	"$BARE" "${VIA_GIT%% (*}"
+
+# --- marcador de formato no cabeçalho gerado (ADR-0003) --------------------
+FMT="$SB/fmt.gitconfig"
+"$SCRIPT" --export "$FMT" 2>/dev/null
+check "cabeçalho gerado declara '# Formato: 1' na 3ª linha" \
+	"# Formato: 1" "$(sed -n '3p' "$FMT")"
+check "'# Formato: 1' cabe na janela de detecção (3 primeiras linhas)" \
+	"# Formato: 1" "$(head -n 3 "$FMT" | grep -F '# Formato:')"
+
+# Arquivo com o cabeçalho antigo (2 linhas) continua sendo detectado como
+# incluído e ganha o marcador ao ser reescrito.
+LEGACY="$SB/legacy.gitconfig"
+printf '%s\n' \
+	'# Gerado por: git alias --export' \
+	'# Nao edite a mao; rode o comando novamente para atualizar.' \
+	'' \
+	'[alias]' >"$LEGACY"
+git config --global --unset-all include.path
+git config --global --add include.path "$LEGACY"
+"$SCRIPT" legado '!echo l' >/dev/null
+check "arquivo com cabeçalho antigo (2 linhas) ainda é detectado como incluído" \
+	"!echo l" "$(git config --file "$LEGACY" alias.legado)"
+check "arquivo com cabeçalho antigo ganha '# Formato: 1' ao ser reescrito" \
+	"# Formato: 1" "$(sed -n '3p' "$LEGACY")"
 
 echo
 echo "pass=$pass fail=$fail"

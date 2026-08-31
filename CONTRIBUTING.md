@@ -19,6 +19,8 @@ Ele executa:
   `git config` temporários; não toca no seu ambiente.
 - `tests/repo.sh` — checagem estática do repositório (hoje: existe
   exatamente um `README.md`, na raiz).
+- `tests/version.sh` — checagem estática: a constante `VERSION` do script é
+  igual ao cabeçalho de versão mais recente do `CHANGELOG.md`.
 
 O script alvo é POSIX sh e precisa continuar limpo tanto em `dash` quanto em
 `bash`. Fixe o shell de cada suíte com `SHELL_UNDER_TEST`:
@@ -123,6 +125,19 @@ O que passa a ser verdade — bom e ruim — depois desta decisão.
 `NNNN` é sequencial e com zero-padding (`0001`, `0002`, …). ADR não se
 edita para reverter: cria-se um novo ADR que supersede o anterior e
 atualiza-se o `Status` do antigo.
+
+## Versão e release
+
+A versão vive na constante `VERSION` no topo de `git/bin/git-alias` — fonte
+única. `CHANGELOG.md` (formato *Keep a Changelog*) registra as mudanças por
+versão, e `tests/version.sh` falha o CI se os dois saírem de sincronia.
+Toda mudança que altere a superfície de comandos ou o formato do
+`aliases.gitconfig` deve acrescentar uma linha à seção `## [Não lançado]`
+do `CHANGELOG.md` no mesmo PR.
+
+Regras de MAJOR/MINOR/PATCH, a fase `0.y` e o marcador `# Formato: N`:
+[ADR-0003](docs/adr/0003-politica-de-versionamento-e-release.md). Passo a
+passo para cortar uma release: [docs/releasing.md](docs/releasing.md).
 
 ## Um único `README.md`
 

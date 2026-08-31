@@ -4,6 +4,7 @@
 # Uso:
 #   git alias                        Mostra a sintaxe de uso
 #   git alias help                   Idem (veja a nota sobre --help)
+#   git alias --version              Mostra a versão (também: -v)
 #   git alias --list                 Lista todos os aliases
 #   git alias --export [<arquivo>]   Exporta em formato gitconfig; sem
 #                                    <arquivo>, escreve na saída padrão
@@ -13,14 +14,20 @@
 #
 # Nota: "git alias --help" é interceptado pelo próprio Git (ele tenta abrir a
 # man page "git-alias", que não existe). Use "git alias" ou "git alias help".
+# "git alias --version" NÃO é interceptado — o Git o repassa ao subcomando.
 
 set -eu
+
+# Fonte única da verdade da versão. Bump segue docs/adr/0003-*.md e
+# docs/releasing.md; tests/version.sh amarra esta constante ao CHANGELOG.md.
+VERSION='0.1.0'
 
 usage() {
 	cat <<'EOF'
 Sintaxe de uso:
   git alias                        (Mostra esta ajuda)
   git alias help                   (idem; '--help' e capturado pelo Git)
+  git alias --version              (Mostra a versao; tambem: -v)
   git alias --list                 (Lista todos os atalhos)
   git alias --export [<arquivo>]   (Exporta os atalhos em formato gitconfig;
                                     sem <arquivo>, escreve na saida padrao)
@@ -63,7 +70,11 @@ alias_render() {
 	tmp="$(mktemp "${2:-${TMPDIR:-/tmp}}/git-alias.XXXXXX")"
 	{
 		printf '# Gerado por: git alias --export\n'
-		printf '# Nao edite a mao; rode o comando novamente para atualizar.\n\n'
+		printf '# Nao edite a mao; rode o comando novamente para atualizar.\n'
+		# Versão do formato do arquivo (ADR-0003), independente da versão da
+		# ferramenta. Fica na 3ª linha: dentro da janela que a detecção lê
+		# (head -n 3). Bump aqui => MAJOR da ferramenta.
+		printf '# Formato: 1\n\n'
 	} >"$tmp"
 	gc "$from" --name-only --get-regexp '^alias\.' 2>/dev/null \
 		| sed 's/^alias\.//' | LC_ALL=C sort -u \
@@ -170,6 +181,25 @@ alias_file() {
 	return 0
 }
 
+# Imprime a versão. Se o diretório do próprio script (resolvido seguindo
+# symlinks, não o diretório de trabalho) estiver num repositório git, anexa
+# o detalhe de "git describe" entre parênteses, p.ex.
+# "0.1.0 (v0.1.0-3-gabc1234)"; fora de um repositório, imprime só a
+# constante. "git describe" nunca é fonte primária — VERSION é a resposta
+# autoritativa. Limitação assumida: uma cópia solta do script vendorizada
+# e commitada noutro repositório faz o parêntese mostrar o "git describe"
+# daquele repo (o número em si continua certo); um submódulo do git-alias
+# não tem esse problema, pois traz o histórico próprio.
+alias_version() {
+	self="$(resolve_link "$0")"
+	desc="$(git -C "$(dirname -- "$self")" describe --tags --always --dirty 2>/dev/null || true)"
+	if [ -n "$desc" ]; then
+		printf '%s (%s)\n' "$VERSION" "$desc"
+	else
+		printf '%s\n' "$VERSION"
+	fi
+}
+
 main() {
 	if [ "$#" -eq 0 ]; then
 		usage
@@ -179,6 +209,10 @@ main() {
 	case "$1" in
 	help | -h | --help)
 		usage
+		return 0
+		;;
+	--version | -v)
+		alias_version
 		return 0
 		;;
 	--list)

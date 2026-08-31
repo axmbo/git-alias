@@ -34,26 +34,27 @@ raiz + identificador SPDX no README (e opcionalmente cabeçalho
 
 ### F1 — Número de versão · **v1.0** · ADR-0003
 
-- [ ] Constante `VERSION="X.Y.Z"` no topo de `git-alias`, fonte única da verdade.
-- [ ] `git alias --version` (e `-v`): imprime a constante; se rodando dentro do
+- [x] Constante `VERSION="X.Y.Z"` no topo de `git-alias`, fonte única da verdade.
+      (`VERSION='0.1.0'`, série `0.y` até a tag `v1.0.0` — ver ADR-0003.)
+- [x] `git alias --version` (e `-v`): imprime a constante; se rodando dentro do
       checkout, anexa detalhe do `git describe` (`1.0.0 (v1.0.0-3-gabc1234)`).
       Não depender de `git describe` como fonte primária (script pode ser
       copiado para fora de um repo git).
-- [ ] Teste: confirmar que o git **não** intercepta `--version` de subcomando
+- [x] Teste: confirmar que o git **não** intercepta `--version` de subcomando
       externo (diferente de `--help`); nota no README no mesmo espírito da
       nota do `--help`.
-- [ ] ADR-0002 "Política de versionamento e release": SemVer ancorado na
+- [x] ADR-0003 "Política de versionamento e release": SemVer ancorado na
       superfície de comandos **e** no formato do `aliases.gitconfig`.
       MAJOR = quebra de comando ou de formato; MINOR = comando/flag novo
       compatível; PATCH = correção.
-- [ ] `CHANGELOG.md` (formato *Keep a Changelog*), seed com `[Unreleased]` e
-      `[1.0.0]`.
-- [ ] Teste estático determinístico no `tests/`: `VERSION` == cabeçalho de
+- [x] `CHANGELOG.md` (formato *Keep a Changelog*), seed com `[Não lançado]` e
+      `[0.1.0]`.
+- [x] Teste estático determinístico no `tests/`: `VERSION` == cabeçalho de
       versão mais recente do `CHANGELOG.md` (no espírito do teste de README
-      único).
-- [ ] `docs/releasing.md`: passo a passo (bump da constante → seção no
+      único). — `tests/version.sh`
+- [x] `docs/releasing.md`: passo a passo (bump da constante → seção no
       changelog → tag `vX.Y.Z` → push da tag).
-- [ ] Marcador de formato no cabeçalho gerado do `aliases.gitconfig`
+- [x] Marcador de formato no cabeçalho gerado do `aliases.gitconfig`
       (`# Formato: 1`). Barato agora; mudar o cabeçalho depois é quebra de
       compat que import/export precisa detectar.
 
@@ -193,7 +194,7 @@ raiz + identificador SPDX no README (e opcionalmente cabeçalho
        teste de README único, CI básico (dash/bash/shellcheck). (A matriz
        maior do CI — versões de git, runner macOS — fecha no passo 9, junto
        da auditoria de portabilidade.)
-4. [ ] **ADR-0003** → F1 (`--version` + CHANGELOG + teste de consistência +
+4. [x] **ADR-0003** → F1 (`--version` + CHANGELOG + teste de consistência +
        `docs/releasing.md`).
 5. [ ] Lote de polish pequeno: F5 (`--list`), F4 (`--rename`), F6 (guardas),
        F7 (exit codes).

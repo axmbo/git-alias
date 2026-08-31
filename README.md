@@ -13,12 +13,15 @@ git/
 docs/
   adr/                # decisões de arquitetura (ADR)
   roadmap.md          # roteiro pré-1.0 (transitório)
+  releasing.md        # passo a passo de release
 tests/
   run.sh              # runner: roda todas as suítes de tests/
   git-alias.sh        # testes do script (HOME isolado)
   repo.sh             # checagem estática do repositório
+  version.sh          # checa VERSION do script == cabeçalho do CHANGELOG
 install.sh            # liga os dois mecanismos de instalação
 CONTRIBUTING.md       # fluxo de trabalho, TDD, Conventional Commits, ADR
+CHANGELOG.md          # mudanças por versão (Keep a Changelog)
 LICENSE               # MIT
 ```
 
@@ -61,6 +64,7 @@ O script é idempotente e faz / orienta três coisas:
 ```
 git alias                        Mostra a sintaxe de uso
 git alias help                   Idem (veja a nota sobre --help)
+git alias --version              Mostra a versão (também: -v)
 git alias --list                 Lista todos os aliases
 git alias --export [<arquivo>]   Exporta em formato gitconfig; sem
                                  <arquivo>, escreve na saída padrão
@@ -79,6 +83,20 @@ aliases incluído no seu `~/.gitconfig` (ver
 O Git intercepta `--help` antes de executar o subcomando — tenta abrir a man
 page `git-alias`, que não existe. Use `git alias` ou `git alias help`.
 
+### `git alias --version` funciona
+
+Ao contrário de `--help`, o Git **não** intercepta `--version` de um
+subcomando externo — ele repassa o argumento, e o script imprime a versão.
+`git alias -v` é sinônimo. Se o diretório do script estiver num repositório
+git, a saída anexa o detalhe do `git describe` entre parênteses, p.ex.
+`0.1.0 (v0.1.0-3-gabc1234)`. Esse detalhe é contexto de melhor esforço: uma
+cópia solta do script vendorizada noutro repositório mostra o `git describe`
+daquele repo — o número antes do parêntese é sempre a resposta autoritativa.
+`tests/git-alias.sh` fixa a não-interceptação.
+
+O número sai da constante `VERSION` no topo de `git/bin/git-alias`, que é a
+fonte única da verdade. Ver [Versão e release](#versão-e-release).
+
 ## Versionamento dos aliases
 
 Com o `install.sh` rodado, o `git/aliases.gitconfig` está no `include.path`
@@ -87,6 +105,12 @@ do seu `~/.gitconfig`. A partir daí, **`git alias <nome> '<cmd>'` e
 pelo cabeçalho `# Gerado por: git alias --export` — e a seção `[alias]` é
 mantida em ordem alfabética (`LC_ALL=C`, estável entre máquinas). Cada
 criação ou remoção já produz um diff pronto para commit.
+
+O cabeçalho gerado traz também `# Formato: 1` na terceira linha — a versão
+do formato do arquivo, um eixo independente da versão da ferramenta (ver
+[ADR-0003](docs/adr/0003-politica-de-versionamento-e-release.md)). Um
+arquivo com o cabeçalho antigo, de duas linhas, continua sendo detectado e
+ganha a linha na primeira reescrita.
 
 Sem arquivo incluído detectado, os dois comandos caem no `git config
 --global` e avisam: o alias **não** foi para um arquivo versionado.
@@ -117,6 +141,20 @@ desta mudança. O dispatcher `alias.alias` é omitido de propósito (senão fari
 sombra no script). Rodar `--export` de outra máquina com aliases diferentes
 sobrescreve o arquivo — trate o commit como o estado canônico.
 
+## Versão e release
+
+O projeto segue [Versionamento Semântico](https://semver.org/lang/pt-BR/)
+ancorado em duas superfícies: a de comandos e o formato do
+`aliases.gitconfig` gerado. Enquanto estiver na série `0.y` (pré-1.0), a
+superfície ainda pode mudar entre versões MINOR. `git alias --version`
+imprime o número; `CHANGELOG.md` registra as mudanças por versão.
+
+- Política: [ADR-0003](docs/adr/0003-politica-de-versionamento-e-release.md).
+- Passo a passo para cortar uma release:
+  [docs/releasing.md](docs/releasing.md).
+- `tests/version.sh` garante que a constante `VERSION` e o `CHANGELOG.md`
+  não saiam de sincronia.
+
 ## Testes
 
 ```sh
@@ -129,6 +167,8 @@ O runner roda todas as suítes de `tests/`:
   temporários; não altera seu ambiente.
 - `tests/repo.sh` — checagem estática do repositório (existe exatamente um
   `README.md`, na raiz).
+- `tests/version.sh` — checagem estática: a constante `VERSION` do script é
+  igual ao cabeçalho de versão mais recente do `CHANGELOG.md`.
 
 O script é POSIX sh e precisa passar tanto em `dash` quanto em `bash`. Para
 fixar o shell de cada suíte:
