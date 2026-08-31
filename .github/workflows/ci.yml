@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  testes:
+    name: suíte (${{ matrix.shell }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [dash, bash]
+    steps:
+      - uses: actions/checkout@v4
+      # dash e bash já vêm no runner (dash é o /bin/sh do Ubuntu); não há
+      # passo de instalação.
+      - name: Rodar tests/run.sh sob ${{ matrix.shell }}
+        run: SHELL_UNDER_TEST=${{ matrix.shell }} sh tests/run.sh
+
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    env:
+      # Versão fixa: o apt do runner e o de quem contribui divergem, e uma
+      # minor nova pode ter achados diferentes. Bump é mudança deliberada —
+      # trocar a versão E o checksum juntos (e a nota em CONTRIBUTING.md).
+      SHELLCHECK_VERSION: v0.10.0
+      SHELLCHECK_SHA256: 6c881ab0698e4e6ea235245f22832860544f17ba386442fe7e9d629f8cbedf87
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar shellcheck ${{ env.SHELLCHECK_VERSION }}
+        run: |
+          tarball="shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+          url="https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/${tarball}"
+          curl -fsSL -o "$tarball" "$url"
+          echo "${SHELLCHECK_SHA256}  ${tarball}" | sha256sum -c -
+          tar -xJf "$tarball"
+          sudo install "shellcheck-${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck
+          shellcheck --version
+      - name: Rodar shellcheck
+        run: shellcheck git/bin/git-alias install.sh tests/*.sh
+
+  # TODO (docs/roadmap.md, "Prontidão para open source" / v1.0): ampliar a
+  # matriz antes da tag v1.0.0.
+  #   - Versões de git: uma antiga (dependemos de `git config --name-only`,
+  #     git >= 2.9) e a mais nova, mais o last-wins do `git config --get`.
+  #   - Runner macOS: `stat`, `readlink` sem `-f` e `mktemp` do BSD.
+  # Job de exemplo, comentado até lá:
+  #
+  # portabilidade-macos:
+  #   name: suíte (macOS)
+  #   runs-on: macos-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - run: sh tests/run.sh

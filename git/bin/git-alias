@@ -104,7 +104,9 @@ write_aliases() {
 	tmp="$(alias_render "$1" "$(dirname -- "$real")")"
 	if [ -e "$real" ]; then
 		m="$(file_mode "$real")"
-		[ -n "$m" ] && chmod "$m" "$tmp" 2>/dev/null || :
+		if [ -n "$m" ]; then
+			chmod "$m" "$tmp" 2>/dev/null || :
+		fi
 	fi
 	mv "$tmp" "$real"
 }
@@ -149,6 +151,10 @@ normalize_or_warn() {
 alias_file() {
 	git config --global --get-all include.path 2>/dev/null \
 		| while IFS= read -r p; do
+			# SC2088: os "~" abaixo são patterns de case (casam o literal
+			# que o git grava em include.path), não tentativas de expandir
+			# til — a expansão para $HOME é feita à mão no corpo do ramo.
+			# shellcheck disable=SC2088
 			case "$p" in
 			/*) ;;
 			'~') p="$HOME" ;;

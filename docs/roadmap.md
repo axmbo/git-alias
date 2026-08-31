@@ -159,18 +159,20 @@ raiz + identificador SPDX no README (e opcionalmente cabeçalho
       `git/aliases.gitconfig` de exemplo vira amostra (`examples/`) ou só
       documentação; remover `~/Dev/dotfiles` e menções a "dotfiles" da prosa
       e do `CLAUDE.md`. Faz par com o item **README** abaixo.
-- [ ] **`LICENSE`** (ver D2).
-- [ ] **`CONTRIBUTING.md`**: como rodar os testes; expectativa de TDD;
+- [x] **`LICENSE`** (ver D2). MIT, titular "Alexandre Leite", 2026.
+- [x] **`CONTRIBUTING.md`**: como rodar os testes; expectativa de TDD;
       Conventional Commits; processo de ADR; shellcheck.
-- [ ] **CI (GitHub Actions)**: `tests/git-alias.sh` em push/PR sob **`dash` e
-      `bash`**; `shellcheck`; **matriz de versões do git** (uma antiga + a
-      mais nova — dependemos de `--name-only` do git ≥ 2.9 e do last-wins do
-      `git config --get`); runner **macOS** (BSD `stat`, `readlink` sem `-f`,
-      `mktemp`).
-- [ ] **Teste de README único**: check determinístico no `tests/` de que
+- [~] **CI (GitHub Actions)**: básico feito em `.github/workflows/ci.yml` —
+      `tests/run.sh` em push/PR sob **`dash` e `bash`** + `shellcheck` em
+      `git/bin/git-alias`, `install.sh` e `tests/*.sh`. **Falta** (job macOS
+      comentado + TODO no arquivo): **matriz de versões do git** (uma antiga
+      + a mais nova — dependemos de `--name-only` do git ≥ 2.9 e do last-wins
+      do `git config --get`); runner **macOS** (BSD `stat`, `readlink` sem
+      `-f`, `mktemp`).
+- [x] **Teste de README único**: check determinístico no `tests/` de que
       existe exatamente um `README.md`, na raiz (exigência do fluxo de
-      trabalho do autor).
-- [ ] **`.editorconfig`**: travar indentação com tab (script e `tests/`).
+      trabalho do autor). `tests/repo.sh`, rodado pelo `tests/run.sh`.
+- [x] **`.editorconfig`**: travar indentação com tab (script e `tests/`).
 - [ ] **README**: tirar o hardcode de `~/Dev/dotfiles` da prosa (o
       `install.sh` já deriva o diretório de `$0`); adicionar "Requisitos"
       (POSIX sh, git ≥ 2.9, coreutils **ou** BSD), "Desinstalação", quickstart
@@ -187,8 +189,10 @@ raiz + identificador SPDX no README (e opcionalmente cabeçalho
 
 1. [x] **D1** — decidido: repositório próprio (ADR-0002).
 2. [x] **D2** — decidido: MIT.
-3. [ ] Plumbing sem ADR: `LICENSE` (MIT), `CONTRIBUTING`, `.editorconfig`,
-       teste de README único, CI básico (dash/bash/shellcheck).
+3. [x] Plumbing sem ADR: `LICENSE` (MIT), `CONTRIBUTING`, `.editorconfig`,
+       teste de README único, CI básico (dash/bash/shellcheck). (A matriz
+       maior do CI — versões de git, runner macOS — fecha no passo 9, junto
+       da auditoria de portabilidade.)
 4. [ ] **ADR-0003** → F1 (`--version` + CHANGELOG + teste de consistência +
        `docs/releasing.md`).
 5. [ ] Lote de polish pequeno: F5 (`--list`), F4 (`--rename`), F6 (guardas),
@@ -196,7 +200,9 @@ raiz + identificador SPDX no README (e opcionalmente cabeçalho
 6. [ ] F3 (`--doctor`).
 7. [ ] **ADR-0004** → F2 (`--import`).
 8. [ ] F8 (completions).
-9. [ ] Reestruturar para repo de ferramenta + reescrever README (ADR-0002).
+9. [ ] Reestruturar para repo de ferramenta + reescrever README (ADR-0002);
+       fechar o CI (matriz de versões de git + runner macOS, hoje TODO/job
+       comentado em `ci.yml`) junto da auditoria de portabilidade.
 10. [ ] Tag **`v1.0.0`**, publicar.
 11. [ ] Backlog v1.1: F9 (man page), F10 (`--edit`), F11 (`--sync`), F2/adopt,
         F2/subconjunto, F12 (`--local`).

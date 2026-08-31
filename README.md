@@ -12,9 +12,14 @@ git/
     git-alias         # implementação do subcomando `git alias`
 docs/
   adr/                # decisões de arquitetura (ADR)
+  roadmap.md          # roteiro pré-1.0 (transitório)
 tests/
+  run.sh              # runner: roda todas as suítes de tests/
   git-alias.sh        # testes do script (HOME isolado)
+  repo.sh             # checagem estática do repositório
 install.sh            # liga os dois mecanismos de instalação
+CONTRIBUTING.md       # fluxo de trabalho, TDD, Conventional Commits, ADR
+LICENSE               # MIT
 ```
 
 ## Instalação
@@ -115,7 +120,28 @@ sobrescreve o arquivo — trate o commit como o estado canônico.
 ## Testes
 
 ```sh
-sh tests/git-alias.sh
+sh tests/run.sh
 ```
 
-Executa num `HOME` e num `git config` temporários; não altera seu ambiente.
+O runner roda todas as suítes de `tests/`:
+
+- `tests/git-alias.sh` — exercita o script num `HOME` e num `git config`
+  temporários; não altera seu ambiente.
+- `tests/repo.sh` — checagem estática do repositório (existe exatamente um
+  `README.md`, na raiz).
+
+O script é POSIX sh e precisa passar tanto em `dash` quanto em `bash`. Para
+fixar o shell de cada suíte:
+
+```sh
+SHELL_UNDER_TEST=dash sh tests/run.sh
+SHELL_UNDER_TEST=bash sh tests/run.sh
+```
+
+O CI roda a suíte sob `dash` e `bash` e passa o `shellcheck` em
+`git/bin/git-alias`, `install.sh` e `tests/*.sh`. Ver
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Licença
+
+MIT (`SPDX-License-Identifier: MIT`) — ver [LICENSE](LICENSE).
