@@ -5,18 +5,37 @@
 #   git alias                        Mostra a sintaxe de uso
 #   git alias help                   Idem (veja a nota sobre --help)
 #   git alias --version              Mostra a versão (também: -v)
-#   git alias --list                 Lista todos os aliases
+#   git alias --list [--file] [--origin|-o]
+#                                    Lista os aliases
 #   git alias --export [<arquivo>]   Exporta em formato gitconfig; sem
 #                                    <arquivo>, escreve na saída padrão
 #   git alias <nome>                 Mostra a definição de um alias
 #   git alias <nome> '<cmd>'         Cria ou atualiza um alias
 #   git alias --unset <nome>         Remove um alias
+#   git alias --rename <velho> <novo>
+#                                    Renomeia um alias, preservando o valor
 #
 # Nota: "git alias --help" é interceptado pelo próprio Git (ele tenta abrir a
 # man page "git-alias", que não existe). Use "git alias" ou "git alias help".
 # "git alias --version" NÃO é interceptado — o Git o repassa ao subcomando.
 
 set -eu
+
+# Fixa a locale de coleta/classificação para o processo inteiro. O script
+# não tem NENHUM trecho que precise de locale-awareness (mensagens são
+# texto fixo em português; a ordenação do arquivo de aliases já forçava
+# "LC_ALL=C sort" pontualmente) — mas faixas de case/glob como
+# "[a-z]"/"[A-Za-z0-9-]" (validate_alias_name) são sensíveis a
+# LC_COLLATE em teoria, um problema de portabilidade de shell documentado
+# (não reproduzido neste ambiente em pt_BR/en_US/C.UTF-8/POSIX, mas o
+# próprio propósito dessa validação — nunca aceitar um nome que o "git
+# config" for normalizar de forma diferente do digitado — é grave o
+# bastante para não confiar em "provavelmente não muda nada aqui".
+# Fixar no processo inteiro, em vez de só nos trechos que hoje precisam
+# disso, evita ter que lembrar de repetir "LC_ALL=C" em toda comparação
+# futura sensível a caixa.
+LC_ALL=C
+export LC_ALL
 
 # Fonte única da verdade da versão. Bump segue docs/adr/0003-*.md e
 # docs/releasing.md; tests/version.sh amarra esta constante ao CHANGELOG.md.
@@ -28,12 +47,14 @@ Sintaxe de uso:
   git alias                        (Mostra esta ajuda)
   git alias help                   (idem; '--help' e capturado pelo Git)
   git alias --version              (Mostra a versao; tambem: -v)
-  git alias --list                 (Lista todos os atalhos)
+  git alias --list [--file] [--origin|-o]
+                                    (Lista os atalhos)
   git alias --export [<arquivo>]   (Exporta os atalhos em formato gitconfig;
                                     sem <arquivo>, escreve na saida padrao)
   git alias <nome>                 (Mostra a definicao de um atalho especifico)
   git alias <nome> '<cmd>'         (Cria ou atualiza um atalho)
   git alias --unset <nome>         (Remove um atalho)
+  git alias --rename <velho> <novo> (Renomeia um atalho, preservando o valor)
 
 Exemplos:
   git alias teste '!echo teste # Meu comando'
@@ -53,6 +74,29 @@ gc() {
 	else
 		git config "$@"
 	fi
+}
+
+# Normaliza <str> para minúsculas (ASCII; a única faixa possível para nome
+# de alias já validado, e evita depender de locale). Chaves do git config
+# são case-insensitive tanto na leitura quanto na escrita — usada em toda
+# comparação de nome de alias contra um literal fixo (nome reservado,
+# comando builtin, "help").
+to_lower() {
+	printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
+}
+
+# Enumera, em ordem alfabética estável (LC_ALL=C) e um por linha, os nomes
+# de alias de <src> (""=config mesclado), omitindo o dispatcher "alias".
+# Usa --name-only + sort -u: nunca "cut" nem regex sobre o valor bruto de
+# --get-regexp, o que corromperia a lista diante de um alias com valor
+# multilinha (mesmo cuidado em alias_render e --list).
+alias_names() {
+	gc "$1" --name-only --get-regexp '^alias\.' 2>/dev/null \
+		| sed 's/^alias\.//' | sort -u \
+		| while IFS= read -r name; do
+			[ "$name" = "alias" ] && continue
+			printf '%s\n' "$name"
+		done
 }
 
 # Cria um arquivo temporário com o cabeçalho padrão seguido da seção [alias]
@@ -76,12 +120,9 @@ alias_render() {
 		# (head -n 3). Bump aqui => MAJOR da ferramenta.
 		printf '# Formato: 1\n\n'
 	} >"$tmp"
-	gc "$from" --name-only --get-regexp '^alias\.' 2>/dev/null \
-		| sed 's/^alias\.//' | LC_ALL=C sort -u \
-		| while IFS= read -r name; do
-			[ "$name" = "alias" ] && continue
-			git config --file "$tmp" "alias.$name" "$(gc "$from" --get "alias.$name")"
-		done
+	alias_names "$from" | while IFS= read -r name; do
+		git config --file "$tmp" "alias.$name" "$(gc "$from" --get "alias.$name")"
+	done
 	printf '%s\n' "$tmp"
 }
 
@@ -153,6 +194,237 @@ normalize_or_warn() {
 	fi
 }
 
+# Valida um nome de alias antes de gravar (criação ou destino de --rename):
+# recusa os nomes reservados "alias" (sombrearia o dispatcher do próprio
+# git-alias, que o Git despacha via "alias.alias") e "help" (interceptado
+# pelo próprio dispatcher antes de qualquer alias ser consultado — nunca
+# seria alcançável como "git alias help"), e qualquer nome que não comece
+# por uma letra minúscula e continue só com [a-z0-9-]. Mensagem amigável
+# em vez do erro cru do "git config"; ecoa em stderr e retorna 2 (erro de
+# uso) se inválido, nada e 0 se ok.
+#
+# Só minúsculas: o "git config" normaliza TODA chave para minúsculas em
+# qualquer modo de enumeração ("--list", "--get-regexp", com ou sem
+# "--name-only" — não é peculiaridade de uma flag específica; só
+# "--get"/"--unset-all" por chave EXATA respeitam a caixa gravada no
+# arquivo). alias_names() (usada por --list e por alias_render, que por
+# sua vez roda depois de TODA gravação no arquivo incluído via
+# normalize_or_warn) depende dessa enumeração — permitir maiúscula na
+# criação faria QUALQUER gravação subsequente reescrever o arquivo e
+# renomear silenciosamente esse alias para minúsculas, mesmo que a
+# operação em curso nem fosse sobre ele. Não há como preservar a caixa
+# por nenhuma via de enumeração do git sem parsing manual do arquivo
+# gitconfig (o F5 evitou exatamente isso).
+#
+# A comparação com os nomes reservados ignora caixa: chaves do git config
+# são case-insensitive tanto na leitura quanto na escrita ("alias.Alias" E
+# "alias.alias" são a MESMA chave para o git — escrever uma sobrescreve a
+# outra). Comparar "$1" literal deixaria passar "Alias"/"HELP"/etc. e
+# sobrescrever o dispatcher do próprio script com um simples typo de
+# maiúscula.
+#
+# MANUTENÇÃO: se um futuro comando ganhar uma palavra nua interceptada em
+# main() (como "help" hoje, em "if [ \"\$1\" = \"help\" ]..."), essa
+# palavra também precisa entrar na lista abaixo — senão "git alias
+# <palavra> '<cmd>'" vira um no-op silencioso em vez de uma recusa clara
+# (a mesma classe de bug já corrigida uma vez para "help").
+#
+# Separada de validate_alias_name (que também barra charset) porque
+# <velho> do --rename precisa dessa checagem SEM a de charset: <velho> já
+# existe no config, podendo ter sido criado antes da exigência de
+# minúsculas (ou por fora do script), e --rename tem que poder recusar
+# especificamente um <velho> reservado (ver "alias" abaixo) sem rejeitar
+# todo <velho> legado que só tenha maiúscula.
+is_reserved_alias_name() {
+	case "$(to_lower "$1")" in
+	alias | help) return 0 ;;
+	esac
+	return 1
+}
+
+validate_alias_name() {
+	if is_reserved_alias_name "$1"; then
+		echo "Erro: '$1' é reservado (usado pelo próprio dispatcher do git alias); escolha outro nome." >&2
+		return 2
+	fi
+	case "$1" in
+	'' | [!a-z]* | *[!a-z0-9-]*)
+		echo "Erro: nome de alias inválido: '$1'. Use letras minúsculas, números e hífen, começando por uma letra." >&2
+		return 2
+		;;
+	esac
+	return 0
+}
+
+# Conta quantos valores a chave <key> ($1) tem na fonte indicada pelo
+# restante dos argumentos ($2 em diante: ex. "--file <arquivo>", "--global",
+# ou nenhum para o config mesclado — repassados como estão para
+# "git config"). Por NUL ("--null --get-all"), não linha: um valor
+# multilinha legítimo (uma entrada só, com \n embutido) não pode ser
+# confundido com múltiplos valores de verdade.
+alias_value_count() {
+	key="$1"
+	shift
+	git config "$@" --null --get-all "$key" 2>/dev/null | tr -cd '\0' | wc -c | tr -d '[:space:]'
+}
+
+# Caminho do arquivo de fallback XDG do config global
+# ($XDG_CONFIG_HOME/git/config, default ~/.config/git/config). O Git só o
+# considera parte do "--global" quando GIT_CONFIG_GLOBAL não está definida
+# (que aí é a ÚNICA fonte) — mesma regra já usada por --list --origin para
+# rotular a origem.
+xdg_global_file() {
+	printf '%s\n' "${XDG_CONFIG_HOME:-$HOME/.config}/git/config"
+}
+
+# Achado GRAVE na 18ª revisão: testa se GIT_CONFIG_GLOBAL está DEFINIDA
+# (mesmo que vazia) — não se tem conteúdo. "${GIT_CONFIG_GLOBAL:-}" (usado
+# antes em todo lugar que precisa dessa checagem) trata "definida como
+# vazia" e "indefinida" como a mesma coisa, mas o git de verdade não:
+# com GIT_CONFIG_GLOBAL="" ele não usa NENHUMA fonte --global (nem
+# ~/.gitconfig, nem o fallback XDG) — bem diferente de indefinida, que
+# usa a resolução normal (~/.gitconfig, ou o fallback XDG na ausência
+# dele). Quem exporta essa variável vazia de propósito para isolar o git
+# (técnica real de sandboxing/teste) tinha esse isolamento quebrado
+# silenciosamente. "${var+x}" (não "${var:-}") é a forma POSIX de
+# perguntar "está definida", ignorando o conteúdo.
+git_config_global_is_set() {
+	[ -n "${GIT_CONFIG_GLOBAL+x}" ]
+}
+
+# A árvore de decisão do fallback XDG (achados das 16ª–20ª revisões),
+# resolvida num ponto único. Ecoa, um caminho por linha, os arquivos
+# físicos que compõem "o git config --global" AGORA — para global_get,
+# global_unset_all, global_value_count e a rotulagem de origem do
+# --list --origin iterarem sobre a saída, em vez de cada um redecidir do
+# zero "GIT_CONFIG_GLOBAL definida? ~/.gitconfig existe? fallback XDG
+# existe?" (a duplicação onde as rodadas 16 a 20 acharam bug atrás de
+# bug, cada correção tendo de ser replicada à mão nos lugares certos —
+# uma delas, na 19ª→20ª, com uma regressão introduzida nesse processo).
+#
+# As regras são as mesmas de antes, agora num lugar só:
+#  - GIT_CONFIG_GLOBAL definida => é a ÚNICA fonte --global (o Git ignora
+#    ~/.gitconfig e o fallback XDG). Ecoada mesmo que o arquivo não
+#    exista: nesse modo não há fallback nenhum. Definida como "" (achado
+#    GRAVE da 18ª revisão) => nenhuma linha: o Git trata isso como
+#    "nenhuma fonte --global alguma".
+#  - Indefinida => ~/.gitconfig (só se existir) e, em seguida, o fallback
+#    XDG (só se existir). A ordem (~/.gitconfig primeiro) espelha a
+#    precedência que global_get assume — o valor do ~/.gitconfig vence o
+#    do XDG. Quando ~/.gitconfig NÃO existe, "git config --global" já lê
+#    o XDG sozinho (é ele quem vira "o" --global nesse estado) e ele é a
+#    única linha; quando existe, o Git fica cego ao XDG (achado da 16ª
+#    revisão) e as duas linhas são necessárias.
+global_backing_files() {
+	if git_config_global_is_set; then
+		[ -n "$GIT_CONFIG_GLOBAL" ] && printf '%s\n' "$GIT_CONFIG_GLOBAL"
+		return 0
+	fi
+	[ -f "$HOME/.gitconfig" ] && printf '%s\n' "$HOME/.gitconfig"
+	gbf_xdg="$(xdg_global_file)"
+	[ -f "$gbf_xdg" ] && printf '%s\n' "$gbf_xdg"
+	return 0
+}
+
+# Lê <key> ($1) da camada --global (inclui o fallback XDG). Ecoa o valor
+# e retorna 0 no primeiro arquivo de global_backing_files que tiver a
+# chave; 1 se nenhum tiver. A ordem de global_backing_files fixa a
+# precedência (~/.gitconfig antes do fallback XDG).
+#
+# Motivação histórica: "git config --global --get" (nesta versão testada
+# do Git) não enxerga o fallback XDG quando ~/.gitconfig existe — mesmo
+# com os dois arquivos presentes e a leitura MESCLADA (usada por --list)
+# enxergando os dois. Sem este helper, --unset/--rename ficavam cegos
+# para um alias que só existe no fallback XDG, embora ele more
+# genuinamente na camada --global que a ferramenta gerencia (ADR-0001).
+global_get() {
+	gg_key="$1"
+	global_backing_files | {
+		while IFS= read -r gg_file; do
+			git config --file "$gg_file" --get "$gg_key" 2>/dev/null && exit 0
+		done
+		exit 1
+	}
+}
+
+# Remove todos os valores de <key> ($1) da camada --global (inclui o
+# fallback XDG). Sucesso (exit 0) se removeu de PELO MENOS um arquivo de
+# global_backing_files — espelha "--unset-all", que também não erra se a
+# chave simplesmente não existir na fonte tentada.
+global_unset_all() {
+	gu_key="$1"
+	global_backing_files | {
+		gu_removed=1
+		while IFS= read -r gu_file; do
+			git config --file "$gu_file" --unset-all "$gu_key" 2>/dev/null && gu_removed=0
+		done
+		[ "$gu_removed" -eq 0 ]
+	}
+}
+
+# Conta os valores de <key> ($1) na camada --global (inclui o fallback
+# XDG): soma alias_value_count de cada arquivo de global_backing_files.
+#
+# Por que somar por arquivo real, e não olhar "--global" e um lado só:
+#  - 17ª revisão: um alias multivalorado SÓ no fallback XDG passava pela
+#    guarda de multiplicidade do --rename sem ser detectado (contava 0),
+#    e --rename perdia um dos valores para sempre.
+#  - 19ª revisão: ~/.gitconfig E o fallback XDG podem definir a MESMA
+#    chave com valores DIFERENTES ao mesmo tempo — contar só um lado
+#    subestimava a multiplicidade real.
+#  - 20ª revisão: somar o XDG "por cima" da contagem de "--global"
+#    dobrava a conta quando ~/.gitconfig não existe (aí "--global" já lê
+#    o XDG sozinho).
+# global_backing_files emite cada arquivo real uma única vez, então a
+# soma direta por --file não conta nada em dobro nem deixa lado de fora.
+global_value_count() {
+	gvc_key="$1"
+	global_backing_files | {
+		gvc_sum=0
+		while IFS= read -r gvc_file; do
+			gvc_one="$(alias_value_count "$gvc_key" --file "$gvc_file")"
+			gvc_sum=$((gvc_sum + gvc_one))
+		done
+		printf '%s\n' "$gvc_sum"
+	}
+}
+
+# 0 se <path> ($1) é um dos arquivos que compõem o --global agora — usada
+# pela rotulagem de origem do --list --origin, no lugar da sua antiga
+# árvore de decisão gf1/gf2 própria.
+is_global_backing_file() {
+	igbf_target="$1"
+	global_backing_files | {
+		while IFS= read -r igbf_f; do
+			[ "$igbf_f" = "$igbf_target" ] && exit 0
+		done
+		exit 1
+	}
+}
+
+# Avisa (não recusa) se <nome> coincidir com um comando builtin do próprio
+# Git: o Git sempre prioriza o builtin, então o alias nunca seria chamado.
+# Fonte: "git --list-cmds=builtins" (Git >= 2.18). O grupo "parseopt" citado
+# na documentação do próprio "--list-cmds" não é aceito nesta e em outras
+# versões testadas ("fatal: unsupported command listing type 'parseopt'");
+# "builtins" sozinho já basta para esta checagem. Numa versão de Git sem
+# suporte a --list-cmds, degrada em silêncio (não avisa, não recusa).
+warn_if_builtin_shadow() {
+	# Normaliza para minúsculas como defesa em profundidade — todo chamador
+	# atual já garante nome em minúsculas antes de chegar aqui
+	# (validate_alias_name exige isso desde a 8ª revisão), mas não custa
+	# nada manter caso um futuro chamador não passe por ela antes.
+	name_lower="$(to_lower "$1")"
+	cmds="$(git --list-cmds=builtins 2>/dev/null)" || return 0
+	for c in $cmds; do
+		if [ "$c" = "$name_lower" ]; then
+			echo "Aviso: '$1' é um comando builtin do Git; o Git sempre usará o builtin, ignorando este alias." >&2
+			return 0
+		fi
+	done
+	return 0
+}
+
 # Descobre o arquivo de aliases versionado: o primeiro caminho em
 # include.path (do config global) cujo conteúdo tem o cabeçalho que este
 # script escreve em --export. Escreve o caminho na saída padrão, ou nada se
@@ -206,28 +478,350 @@ main() {
 		return 0
 	fi
 
+	# "help" só é interceptado como pedido de ajuda sem um segundo argumento
+	# ("git alias help"); com dois argumentos ("git alias help '<cmd>'") é
+	# uma tentativa de criar um alias chamado "help", que segue para o
+	# caminho de criação abaixo e esbarra em validate_alias_name (mesma
+	# guarda de "alias"). "-h"/"--help" são sempre interceptados: começam
+	# por "-" e por isso já seriam nomes de alias inválidos de qualquer jeito.
+	# Comparação case-insensitive, consistente com validate_alias_name
+	# (que já trata "help" como reservado independente de caixa).
+	if [ "$(to_lower "$1")" = "help" ] && [ "$#" -eq 1 ]; then
+		usage
+		return 0
+	fi
+
 	case "$1" in
-	help | -h | --help)
+	-h | --help)
+		if [ "$#" -ne 1 ]; then
+			echo "Erro: uso: git alias -h" >&2
+			return 2
+		fi
 		usage
 		return 0
 		;;
 	--version | -v)
+		if [ "$#" -ne 1 ]; then
+			echo "Erro: uso: git alias --version" >&2
+			return 2
+		fi
 		alias_version
 		return 0
 		;;
 	--list)
-		git config --get-regexp '^alias\.' \
-			| grep -v '^alias\.alias ' \
-			| sed 's/alias\.\([^ ]*\) \(.*\)/\1 = \2/'
+		shift
+		want_file=0
+		want_origin=0
+		while [ "$#" -gt 0 ]; do
+			case "$1" in
+			--file) want_file=1 ;;
+			--origin | -o) want_origin=1 ;;
+			*)
+				echo "Erro: opção desconhecida para --list: $1" >&2
+				return 2
+				;;
+			esac
+			shift
+		done
+		f="$(alias_file)"
+		src=""
+		if [ "$want_file" -eq 1 ]; then
+			if [ -z "$f" ]; then
+				echo "Aviso: nenhum arquivo de aliases incluído encontrado." >&2
+				return 1
+			fi
+			src="$f"
+		fi
+		# A rotulagem de origem, mais abaixo, compara o caminho de cada
+		# alias contra is_global_backing_file (o mesmo helper que
+		# global_get/--unset/--rename usam para decidir o que é "--global"
+		# agora, incluindo o fallback XDG).
+		alias_names "$src" | while IFS= read -r name; do
+			# Achado na 14ª revisão: sob "set -eu", uma falha aqui (ex.:
+			# o alias foi removido por outro processo entre a
+			# enumeração de alias_names e esta consulta — TOCTOU)
+			# mataria o subshell deste "while" na hora, abortando
+			# --list no meio da listagem com exit code não
+			# documentado. "if ! valor=..." em vez de atribuição
+			# direta: é a forma que o set -e reconhece como condição
+			# checada, não como comando que deve interromper o script.
+			if ! value="$(gc "$src" --get "alias.$name" 2>/dev/null)"; then
+				continue
+			fi
+			# Achado na 14ª revisão: uma chave "alias.X" pode ter mais
+			# de um valor na mesma camada (ex.: "git config --add"
+			# usado por fora do git-alias) — o "--get" acima só
+			# retorna o último. --rename recusa mexer nesse caso
+			# citando "--get-all" (F4); --list, o comando de
+			# descoberta, não pode escondê-lo em silêncio.
+			#
+			# Achado GRAVE na 15ª revisão: contar no config MESCLADO
+			# (sem --file) confundia sombra obsoleta — arquivo + cópia
+			# direta no --global, o cenário normal que create/--rename/
+			# --unset já limpam — com multivalor real: cada uma das
+			# duas camadas tem UM valor só, mas o total mesclado somava
+			# as duas como se fossem duplicatas da MESMA fonte. Checa
+			# cada uma das duas ÚNICAS camadas que este script gerencia
+			# (ADR-0001) separadamente — "git config --global" por si só
+			# já ignora [include] (só enxerga o conteúdo literal do
+			# ~/.gitconfig), então isso naturalmente exclui a
+			# contribuição do arquivo incluído da contagem do --global. É
+			# o mesmo escopo que --rename já usa (old_n_file/
+			# old_n_global), não o total mesclado.
+			if [ -n "$src" ]; then
+				n="$(alias_value_count "alias.$name" --file "$src")"
+			else
+				n_file=0
+				if [ -n "$f" ]; then
+					n_file="$(alias_value_count "alias.$name" --file "$f")"
+				fi
+				n_global="$(global_value_count "alias.$name")"
+				n="$n_file"
+				[ "$n_global" -gt "$n" ] && n="$n_global"
+			fi
+			if [ "$n" -gt 1 ]; then
+				echo "Aviso: '$name' tem mais de um valor (veja: git config --get-all alias.$name); mostrando o último." >&2
+			fi
+			if [ "$want_origin" -eq 0 ]; then
+				printf '%s = %s\n' "$name" "$value"
+				continue
+			fi
+			if [ -n "$src" ]; then
+				label="arquivo:$src"
+			else
+				raw="$(git config --show-origin --get "alias.$name" 2>/dev/null | head -n 1 | cut -f1)"
+				case "$raw" in
+				file:*)
+					path="${raw#file:}"
+					if [ -n "$f" ] && [ "$path" = "$f" ]; then
+						label="arquivo:$path"
+					elif is_global_backing_file "$path"; then
+						label="--global"
+					else
+						label="outro:$path"
+					fi
+					;;
+				*)
+					label="outro:$raw"
+					;;
+				esac
+			fi
+			# Achado na 15ª revisão: um "printf" só prefixa a 1ª linha
+			# física com o rótulo — as linhas de continuação de um valor
+			# multilinha saíam cruas, sem rótulo nem tab, quebrando o
+			# parsing por "cut -f1" que consome este formato. Prefixa
+			# cada linha física do bloco "nome = valor" individualmente.
+			printf '%s = %s\n' "$name" "$value" | while IFS= read -r ln; do
+				printf '%s\t%s\n' "$label" "$ln"
+			done
+		done
 		return 0
 		;;
 	--export)
+		if [ "$#" -gt 2 ]; then
+			echo "Erro: uso: git alias --export [<arquivo>]" >&2
+			return 2
+		fi
 		alias_export "${2:-}"
 		return 0
 		;;
+	--rename)
+		old="${2:-}"
+		new="${3:-}"
+		if [ -z "$old" ] || [ -z "$new" ] || [ "$#" -ne 3 ]; then
+			echo "Erro: uso: git alias --rename <velho> <novo>" >&2
+			return 2
+		fi
+		# <velho> não passa pela validação completa (charset) — pode ser um
+		# nome legado —, mas precisa ser barrado se for um nome reservado:
+		# "alias" existe de verdade no --global como a entrada que faz o
+		# próprio "git alias" funcionar como subcomando do Git; renomear a
+		# PARTIR dela apagaria essa entrada na limpeza normal de <velho>,
+		# quebrando o dispatcher até o usuário recriá-la manualmente.
+		if is_reserved_alias_name "$old"; then
+			echo "Erro: '$old' é reservado (usado pelo próprio dispatcher do git alias); escolha outro nome." >&2
+			return 2
+		fi
+		validate_alias_name "$new" || return 2
+		f="$(alias_file)"
+		# O valor de <velho> vem preferencialmente do arquivo incluído, não
+		# do config mesclado: se houver cópia obsoleta no --global posicionada
+		# depois do [include] (a mesma "sombra" que create/--unset já
+		# limpam), o config mesclado enxergaria a cópia obsoleta, e usar esse
+		# valor aqui perderia para sempre o valor canônico do arquivo. Testa
+		# a existência pelo código de saída do "git config --get", não pela
+		# string do valor: um alias com valor "" é um alias existente.
+		old_val=""
+		old_found=0
+		old_src=""
+		if [ -n "$f" ] && old_val="$(git config --file "$f" --get "alias.$old" 2>/dev/null)"; then
+			old_found=1
+			old_src="$f"
+		elif old_val="$(global_get "alias.$old")"; then
+			old_found=1
+		fi
+		if [ "$old_found" -eq 0 ]; then
+			# O fallback acima só olha arquivo incluído e --global — as duas
+			# únicas camadas que --rename gerencia (ADR-0001). Se <velho> não
+			# está em nenhuma delas mas AINDA ASSIM resolve no config
+			# mesclado, ele vive em --local/--system/--worktree/-c: usar
+			# "git config --get" mesclado aqui (como este código já fez antes)
+			# pegaria esse valor achando que era do --global, e gravá-lo sob
+			# <novo> — destruindo um valor de --global genuinamente diferente
+			# que porventura coexistisse, ou vazando config repo-específica
+			# para dentro do arquivo compartilhado e versionado.
+			if git config --get "alias.$old" >/dev/null 2>&1; then
+				echo "Erro: '$old' existe, mas fora do arquivo incluído e do --global (ex.: config --local ou --system) — --rename só opera nessas duas camadas. Resolva manualmente (git config --get alias.$old)." >&2
+				return 1
+			fi
+			echo "Aviso: O alias '$old' não existe; nada para renomear." >&2
+			return 1
+		fi
+		# Checagem de "mesmo nome" ANTES da de multiplicidade (abaixo) e
+		# ANTES da de "<novo> já existe": renomear para o próprio nome não
+		# escreve nem remove nada, então nem multiplicidade nem "já existe"
+		# são motivo real de recusa aqui — são a MESMA chave. Comparação
+		# case-insensitive (chave do git config é a mesma independente de
+		# caixa): "--rename Foo foo" também é a mesma chave e cairia, sem
+		# isso, no ramo de "já existe", cuja mensagem sugere um --unset que
+		# apagaria o próprio alias.
+		if [ "$(to_lower "$old")" = "$(to_lower "$new")" ]; then
+			echo "Aviso: '$old' já tem esse nome; nada para renomear." >&2
+			return 0
+		fi
+		# Uma chave "alias.X" pode ter mais de um valor na MESMA camada que
+		# a limpeza abaixo vai de fato alterar (ex.: "git config --add"
+		# usado fora do git-alias). old_val acima só enxerga o último;
+		# gravar esse valor sob <novo> e depois fazer --unset-all
+		# descartaria os demais para sempre. Contagem por NUL
+		# ("--null --get-all"), não por linha: um alias multilinha legítimo
+		# (um valor só, com \n embutido) não pode ser confundido com
+		# múltiplos valores de verdade.
+		#
+		# Escopo deliberadamente restrito ao arquivo (só se foi dali que
+		# old_val veio) e ao --global (sempre tentado como limpeza) — as
+		# duas ÚNICAS camadas que este comando escreve. Contar o config
+		# MESCLADO inteiro recusaria também um alias definido em camadas
+		# que --rename nunca toca (ex.: --system + --global, sem
+		# ambiguidade real: --get já resolve para o valor do --global, que
+		# é o que roda de fato); nesse caso o pior cenário é o alias
+		# "ressurgir" com o valor de --system depois, já coberto pelo aviso
+		# de "ainda existe em outra fonte" mais abaixo.
+		# Checa a multiplicidade só na camada de onde old_val de fato veio:
+		# se veio do arquivo (old_src = $f), uma sombra multivalorada no
+		# --global é irrelevante — vai ser removida por inteiro de qualquer
+		# forma ("--unset-all" não liga para quantos valores há) e não é
+		# ambiguidade sobre qual valor preservar, já que o valor de verdade
+		# nunca veio de lá.
+		old_n_file=0
+		old_n_global=0
+		if [ "$old_src" = "$f" ] && [ -n "$f" ]; then
+			old_n_file="$(alias_value_count "alias.$old" --file "$f")"
+		else
+			old_n_global="$(global_value_count "alias.$old")"
+		fi
+		if [ "$old_n_file" -gt 1 ] || [ "$old_n_global" -gt 1 ]; then
+			echo "Erro: '$old' tem mais de um valor no arquivo incluído ou no git config --global — --rename não sabe qual preservar. Resolva manualmente (git config --get-all alias.$old) antes de renomear." >&2
+			return 1
+		fi
+		if git config --get "alias.$new" >/dev/null 2>&1; then
+			# "git alias --unset <novo>" só resolve o conflito se <novo>
+			# estiver numa das duas camadas que --unset de fato alcança
+			# (arquivo incluído ou --global) — as mesmas que --rename
+			# gerencia. Se <novo> só existe em outra fonte (--system,
+			# --local etc.), sugerir esse comando deixaria o usuário preso:
+			# ele rodaria a sugestão e receberia "não existe".
+			if { [ -n "$f" ] && git config --file "$f" --get "alias.$new" >/dev/null 2>&1; } \
+				|| global_get "alias.$new" >/dev/null 2>&1; then
+				echo "Erro: já existe um alias '$new'. Escolha outro nome ou remova-o antes com 'git alias --unset $new'." >&2
+			else
+				echo "Erro: já existe um alias '$new', mas fora do arquivo incluído e do --global — 'git alias --unset' não alcança essa fonte. Escolha outro nome." >&2
+			fi
+			return 1
+		fi
+		warn_if_builtin_shadow "$new"
+		if [ -n "$f" ]; then
+			git config --file "$f" "alias.$new" "$old_val"
+			git config --file "$f" --unset-all "alias.$old" 2>/dev/null || true
+			normalize_or_warn "$f"
+			# "Cópia obsoleta" só é honesto quando <velho> já estava garantido
+			# no arquivo (old_src = "$f") e o --global tinha, além disso, uma
+			# cópia redundante — só nesse caso a remoção abaixo é limpeza de
+			# duplicata de verdade. Quando <velho> veio do --global (old_src
+			# vazio), o --global era a ÚNICA fonte: não há duplicata alguma,
+			# só a relocação normal para o arquivo, e chamar isso de
+			# "obsoleta" enganaria o usuário. Só <velho> pode estar em jogo
+			# aqui: <novo> já foi confirmado ausente do config mesclado
+			# (checagem acima), que inclui o --global.
+			global_shadow_removed=1
+			global_unset_all "alias.$old" || global_shadow_removed=0
+			if [ "$old_src" = "$f" ] && [ "$global_shadow_removed" -eq 1 ]; then
+				echo "Alias '$old' renomeado para '$new' em $f (cópia obsoleta de '$old' em git config --global também removida)."
+			else
+				echo "Alias '$old' renomeado para '$new' em $f."
+			fi
+		else
+			git config --global "alias.$new" "$old_val"
+			global_unset_all "alias.$old" || true
+			echo "Alias '$old' renomeado para '$new' no git config --global (nenhum arquivo de aliases incluído encontrado)."
+		fi
+		# Achado na 16ª revisão: o aviso abaixo (para <velho> ainda existir
+		# em --local/--system, que --rename não alcança) ficava com a
+		# mensagem errada quando a causa real era outra: a limpeza acima
+		# (git config --file/--unset-all) FALHOU por algum motivo genuíno
+		# (lock, permissão) em vez de "chave não existe" — <velho> continua
+		# na MESMA fonte de onde veio (old_src), não em "outra fonte" fora
+		# do alcance da ferramenta. Checa a origem exata primeiro, com a
+		# mensagem certa para esse caso; só cai na genérica de "outra
+		# fonte" quando <velho> de fato não está mais lá.
+		old_still_at_origin=0
+		if [ -n "$old_src" ]; then
+			git config --file "$old_src" --get "alias.$old" >/dev/null 2>&1 && old_still_at_origin=1
+		else
+			global_get "alias.$old" >/dev/null 2>&1 && old_still_at_origin=1
+		fi
+		# Achados 2 e 3 na 17ª revisão: quando <velho> veio do arquivo
+		# (old_src = $f), a checagem acima só cobre a remoção do PRÓPRIO
+		# arquivo — não a limpeza OPORTUNISTA da sombra no --global
+		# (linha 708/716). Se essa limpeza falhar de verdade (o alias
+		# ainda resolve em --global mesmo depois da tentativa, não porque
+		# nunca houve sombra nenhuma), é a mesma classe de falha real, só
+		# que na camada --global: precisa da mesma mensagem/exit code,
+		# não da genérica de "outra fonte" (que aqui seria factualmente
+		# errada — a cópia remanescente está literalmente no --global).
+		shadow_still_at_global=0
+		if [ "$old_src" = "$f" ] && [ -n "$f" ] && [ "$global_shadow_removed" -eq 0 ]; then
+			global_get "alias.$old" >/dev/null 2>&1 && shadow_still_at_global=1
+		fi
+		if [ "$old_still_at_origin" -eq 1 ] && [ -n "$old_src" ]; then
+			echo "Aviso: a remoção de '$old' de $old_src falhou — '$old' e '$new' agora coexistem nesse arquivo. Resolva manualmente (git config --file $old_src --unset-all alias.$old)." >&2
+			return 1
+		elif [ "$old_still_at_origin" -eq 1 ] || [ "$shadow_still_at_global" -eq 1 ]; then
+			echo "Aviso: a remoção de '$old' do git config --global falhou — '$old' e '$new' agora coexistem. Resolva manualmente (git config --global --unset-all alias.$old)." >&2
+			return 1
+		fi
+		# O arquivo e o --global são os dois únicos lugares que este script
+		# gerencia (ADR-0001); se <velho> ainda resolver em outra fonte (ex.:
+		# config --local ou --system), a limpeza acima não alcança, e o
+		# usuário precisa saber — em vez de achar que a renomeação foi
+		# completa quando na prática duplicou o alias.
+		if git config --get "alias.$old" >/dev/null 2>&1; then
+			echo "Aviso: '$old' ainda existe em outra fonte de configuração (fora do --global e do arquivo incluído) e não foi removido." >&2
+		fi
+		return 0
+		;;
 	--unset)
-		if [ -z "${2:-}" ]; then
+		if [ -z "${2:-}" ] || [ "$#" -ne 2 ]; then
 			echo "Erro: Informe o nome do atalho para remover. Ex: git alias --unset <nome>" >&2
+			return 2
+		fi
+		# Mesma guarda de --rename para <velho>: "alias" existe de verdade
+		# no --global como a entrada que faz o próprio "git alias" funcionar
+		# como subcomando do Git; "--unset alias" apagaria essa entrada na
+		# limpeza normal, quebrando o dispatcher até o usuário recriá-la
+		# manualmente.
+		if is_reserved_alias_name "$2"; then
+			echo "Erro: '$2' é reservado (usado pelo próprio dispatcher do git alias); escolha outro nome." >&2
 			return 2
 		fi
 		f="$(alias_file)"
@@ -237,7 +831,7 @@ main() {
 			normalize_or_warn "$f"
 			from_file=1
 		fi
-		if git config --global --unset-all "alias.$2" 2>/dev/null; then
+		if global_unset_all "alias.$2"; then
 			from_global=1
 		fi
 		if [ "$from_file" -eq 1 ] && [ "$from_global" -eq 1 ]; then
@@ -248,20 +842,53 @@ main() {
 			echo "Alias '$2' removido do git config --global (não estava no arquivo de aliases)."
 		elif [ "$from_global" -eq 1 ]; then
 			echo "Alias '$2' removido do git config --global (nenhum arquivo de aliases incluído encontrado)."
+		# Achado GRAVE na 19ª revisão (2): a checagem de "remoção falhou"
+		# abaixo (achado 3 da 18ª) não distinguia "existe numa camada que
+		# --unset NUNCA tentou tocar" (--system/--local, fora do alcance
+		# por ADR-0001) de "existe na camada que --unset TENTOU limpar,
+		# mas a limpeza falhou de verdade" — as duas caíam na mesma
+		# mensagem "a remoção falhou", mesmo sem nenhuma tentativa real
+		# ali. Checa cada camada que --unset de fato tenta (arquivo,
+		# --global) ANTES de cair na genérica "outra fonte" — mesma ordem
+		# que --rename já usa para essa distinção.
+		elif [ -n "$f" ] && git config --file "$f" --get "alias.$2" >/dev/null 2>&1; then
+			echo "Aviso: a remoção de '$2' de $f falhou — o alias continua definido lá. Resolva manualmente (git config --file $f --unset-all alias.$2)." >&2
+			return 1
+		elif global_get "alias.$2" >/dev/null 2>&1; then
+			echo "Aviso: a remoção de '$2' do git config --global falhou — o alias continua definido lá. Resolva manualmente (git config --global --unset-all alias.$2)." >&2
+			return 1
+		elif git config --get "alias.$2" >/dev/null 2>&1; then
+			echo "Aviso: '$2' ainda existe em outra fonte de configuração (fora do --global e do arquivo incluído) e não foi removido." >&2
+			return 1
 		else
-			echo "Aviso: O alias '$2' não existe ou já foi removido."
+			echo "Aviso: O alias '$2' não existe ou já foi removido." >&2
+			return 1
 		fi
 		return 0
 		;;
 	esac
 
 	if [ "$#" -eq 2 ]; then
+		validate_alias_name "$1" || return 2
+		warn_if_builtin_shadow "$1"
 		f="$(alias_file)"
 		if [ -n "$f" ]; then
 			git config --file "$f" "alias.$1" "$2"
 			normalize_or_warn "$f"
-			if git config --global --unset-all "alias.$1" 2>/dev/null; then
+			# Achado GRAVE na 18ª revisão (2): mesma classe dos achados 2/3
+			# da 17ª revisão (--rename), mas aqui — se a limpeza da sombra
+			# falhar por um motivo genuíno (não por "nada para limpar"), a
+			# cópia antiga no --global continua lá e, por vir depois do
+			# [include] no ~/.gitconfig, GANHA da nova entrada na
+			# resolução mesclada do git: o alias recém-criado fica
+			# silenciosamente sombreado pelo antigo. Recusar essa
+			# ambiguidade (global_get confirma que a cópia antiga ainda
+			# resolve) em vez de anunciar sucesso puro e simples.
+			if global_unset_all "alias.$1"; then
 				echo "Alias '$1' gravado em $f (cópia obsoleta em git config --global removida)."
+			elif global_get "alias.$1" >/dev/null 2>&1; then
+				echo "Aviso: '$1' foi gravado em $f, mas a remoção da cópia antiga no git config --global falhou — essa cópia antiga continua sombreando a nova (o git prioriza o que vem depois do [include]). Resolva manualmente (git config --global --unset-all alias.$1)." >&2
+				return 1
 			else
 				echo "Alias '$1' gravado em $f."
 			fi
@@ -273,13 +900,12 @@ main() {
 	fi
 
 	if [ "$#" -eq 1 ]; then
-		cmd="$(git config --get "alias.$1" 2>/dev/null || true)"
-		if [ -n "$cmd" ]; then
+		if cmd="$(git config --get "alias.$1" 2>/dev/null)"; then
 			echo "$1 = $cmd"
-		else
-			echo "Aviso: O alias '$1' não foi encontrado."
+			return 0
 		fi
-		return 0
+		echo "Aviso: O alias '$1' não foi encontrado." >&2
+		return 1
 	fi
 
 	usage

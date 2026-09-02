@@ -95,31 +95,33 @@ raiz + identificador SPDX no README (e opcionalmente cabeçalho
 
 ### F4 — `git alias --rename <velho> <novo>` · **v1.0**
 
-- [ ] Um comando no lugar de `git alias novo "$(...)" && git alias --unset
+- [x] Um comando no lugar de `git alias novo "$(...)" && git alias --unset
       velho`. Preserva o valor exato; trata arquivo + limpeza de shadow de
       forma consistente.
 
 ### F5 — Corrigir e ampliar `--list` · **v1.0**
 
-- [ ] Migrar o parsing de `--list` para `git config --name-only --get-regexp`
+- [x] Migrar o parsing de `--list` para `git config --name-only --get-regexp`
       + lookup por chave (mesmo bug de valor multilinha já corrigido no
       `alias_render`).
-- [ ] `git alias --list --file`: só os aliases do arquivo versionado.
-- [ ] Marcação de origem (arquivo vs `--global` vs outro), tipo
-      `git config --show-origin`.
+- [x] `git alias --list --file`: só os aliases do arquivo versionado.
+- [x] Marcação de origem (arquivo vs `--global` vs outro), tipo
+      `git config --show-origin`. (Opt-in via `--list --origin`/`-o`.)
 
 ### F6 — Guardas no `set` · **v1.0** (pequeno)
 
-- [ ] Recusar/avisar `git alias alias '...'` (sombrearia o script).
-- [ ] Avisar quando `<cmd>` sombreia um comando builtin do git (que o git
-      ignora silenciosamente).
-- [ ] Mensagem amigável para nome inválido, no lugar do erro cru do
+- [x] Recusar/avisar `git alias alias '...'` (sombrearia o script).
+- [x] Avisar quando `<cmd>` sombreia um comando builtin do git (que o git
+      ignora silenciosamente). (`git --list-cmds=builtins`; o grupo
+      `parseopt` citado na doc do próprio Git não é aceito nesta versão.)
+- [x] Mensagem amigável para nome inválido, no lugar do erro cru do
       `git config`.
 
 ### F7 — Contrato de exit codes · **v1.0** (polish, não feature)
 
-- [ ] Revisar e documentar 0/1/2. Hoje `--unset` de alias ausente imprime
+- [x] Revisar e documentar 0/1/2. Hoje `--unset` de alias ausente imprime
       "Aviso" e retorna 0 — discutível para scripting. Definir e testar.
+      (0 sucesso, 1 falha esperada, 2 erro de uso; tabela no README.)
 
 ### F8 — Completions bash/zsh · **v1.0**
 
@@ -196,7 +198,7 @@ raiz + identificador SPDX no README (e opcionalmente cabeçalho
        da auditoria de portabilidade.)
 4. [x] **ADR-0003** → F1 (`--version` + CHANGELOG + teste de consistência +
        `docs/releasing.md`).
-5. [ ] Lote de polish pequeno: F5 (`--list`), F4 (`--rename`), F6 (guardas),
+5. [x] Lote de polish pequeno: F5 (`--list`), F4 (`--rename`), F6 (guardas),
        F7 (exit codes).
 6. [ ] F3 (`--doctor`).
 7. [ ] **ADR-0004** → F2 (`--import`).
