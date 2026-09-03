@@ -21,6 +21,9 @@ Ele executa:
   exatamente um `README.md`, na raiz).
 - `tests/version.sh` — checagem estática: a constante `VERSION` do script é
   igual ao cabeçalho de versão mais recente do `CHANGELOG.md`.
+- `tests/completions.sh` — checagem estática dos arquivos de
+  `completions/`: existência, sintaxe (`bash -n` / `zsh -n` quando o shell
+  está disponível) e cobertura de cada subcomando/flag de `git alias`.
 
 O script alvo é POSIX sh e precisa continuar limpo tanto em `dash` quanto em
 `bash`. Fixe o shell de cada suíte com `SHELL_UNDER_TEST`:
@@ -38,8 +41,12 @@ Antes de abrir um PR, rode a suíte sob os dois. O CI faz o mesmo (ver
 Todo shell versionado tem que passar no `shellcheck` sem avisos:
 
 ```sh
-shellcheck git/bin/git-alias install.sh tests/*.sh
+shellcheck git/bin/git-alias install.sh tests/*.sh completions/git-alias.bash
 ```
+
+`completions/git-alias.zsh` fica de fora: o `shellcheck` não analisa zsh. A
+sintaxe dele é coberta por `tests/completions.sh` (via `zsh -n`, quando o
+`zsh` está disponível).
 
 O CI roda essa mesma checagem e falha o build se houver qualquer achado. Ele
 usa uma versão fixa do `shellcheck`, baixada do release oficial e conferida

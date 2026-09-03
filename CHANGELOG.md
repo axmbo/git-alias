@@ -13,6 +13,20 @@ projeto estiver na série `0.y`, a superfície de comandos e o formato do
 
 ### Adicionado
 
+- Completions de `git alias` para bash e zsh (`completions/git-alias.bash`,
+  `completions/git-alias.zsh`). Completam os subcomandos (`help`,
+  `--version`/`-v`, `--list`, `--export`, `--import`, `--unset`, `--rename`,
+  `--doctor`), as flags de cada um (`--list` → `--file`, `--origin`/`-o`;
+  `--import` → `--overwrite`, `--dry-run`) e nomes de alias já definidos em
+  `git alias <nome>`, `--unset <TAB>` e o `<velho>` de `--rename`. bash: a
+  função `_git_alias`, carregada sob demanda pela completion do próprio Git
+  (`git-completion.bash`). zsh: a função `_git-alias`, que o `_git` nativo
+  procura para o subcomando `alias` — sem `bashcompinit`. O `install.sh`
+  agora tem um 4º passo que faz o symlink das duas para os diretórios de
+  completion do usuário (bash: dir do *dynamic loader* do `bash-completion`;
+  zsh: um dir de `site-functions`, com `PENDENTE` orientando o `$fpath`).
+  `tests/completions.sh` cobre a existência, a sintaxe e a cobertura de
+  subcomandos/flags dos dois arquivos.
 - `git alias --import <arquivo>` (`-` = entrada padrão): funde as entradas
   `alias.*` de uma fonte gitconfig (tipicamente a saída de um `--export`) na
   seção `[alias]` do arquivo de aliases versionado detectado, sem destruir o

@@ -128,9 +128,14 @@ raiz + identificador SPDX no README (e opcionalmente cabeçalho
 
 ### F8 — Completions bash/zsh · **v1.0**
 
-- [ ] Completar nomes de alias em `git alias <TAB>` e `git alias --unset
-      <TAB>`, e as flags.
-- [ ] `completions/git-alias.bash` + `.zsh`; `install.sh` liga (ou documenta).
+- [x] Completar nomes de alias em `git alias <TAB>` e `git alias --unset
+      <TAB>`, e as flags. (Também: `--rename <velho> <TAB>`, `--file`/
+      `--origin`/`-o` em `--list`, `--overwrite`/`--dry-run` em `--import`,
+      nomes de arquivo em `--export`/`--import`.)
+- [x] `completions/git-alias.bash` (função `_git_alias`, via git-completion.bash)
+      + `.zsh` (função `_git-alias`, via `_git` nativo do zsh); `install.sh`
+      liga por symlink (4º passo). `tests/completions.sh` cobre existência,
+      sintaxe e cobertura de subcomandos/flags. 5 rodadas de `/code-review`.
 
 ### F9 — Man page · v1.1
 
@@ -205,7 +210,7 @@ raiz + identificador SPDX no README (e opcionalmente cabeçalho
        F7 (exit codes).
 6. [x] F3 (`--doctor`).
 7. [x] **ADR-0004** → F2 (`--import`).
-8. [ ] F8 (completions).
+8. [x] F8 (completions).
 9. [ ] Reestruturar para repo de ferramenta + reescrever README (ADR-0002);
        fechar o CI (matriz de versões de git + runner macOS, hoje TODO/job
        comentado em `ci.yml`) junto da auditoria de portabilidade.

@@ -10,6 +10,9 @@ git/
   aliases.gitconfig   # seção [alias]; git alias grava aqui, sempre ordenada
   bin/
     git-alias         # implementação do subcomando `git alias`
+completions/
+  git-alias.bash      # completion de `git alias` para bash
+  git-alias.zsh       # completion de `git alias` para zsh
 docs/
   adr/                # decisões de arquitetura (ADR)
   roadmap.md          # roteiro pré-1.0 (transitório)
@@ -20,7 +23,8 @@ tests/
   git-alias.sh        # testes do script (HOME isolado)
   repo.sh             # checagem estática do repositório
   version.sh          # checa VERSION do script == cabeçalho do CHANGELOG
-install.sh            # liga os dois mecanismos de instalação
+  completions.sh      # checagem estática dos arquivos de completion
+install.sh            # liga os mecanismos de instalação (include.path, PATH, completions)
 CONTRIBUTING.md       # fluxo de trabalho, TDD, Conventional Commits, ADR
 CHANGELOG.md          # mudanças por versão (Keep a Changelog)
 LICENSE               # MIT
@@ -34,7 +38,7 @@ Clone o repositório em `~/Dev/dotfiles` e rode:
 ~/Dev/dotfiles/install.sh
 ```
 
-O script é idempotente e faz / orienta três coisas:
+O script é idempotente e faz / orienta quatro coisas:
 
 1. **`include.path`** — adiciona `git/aliases.gitconfig` ao seu
    `~/.gitconfig` global, para carregar os aliases versionados. Equivale a:
@@ -60,9 +64,15 @@ O script é idempotente e faz / orienta três coisas:
    git config --global --unset alias.alias
    ```
 
-Para conferir a qualquer momento se esses três pontos estão de pé, rode
-[`git alias --doctor`](#--doctor-diagnóstico-da-instalação) — é o `install.sh`
-invertido, só leitura.
+4. **Completions de shell** — instala as completions de `git alias` para
+   bash e zsh por symlink para `completions/`, no mesmo espírito dos pontos
+   1 e 2 (a árvore de trabalho continua sendo a fonte da verdade). Para zsh,
+   imprime um `PENDENTE` com a linha de `$fpath` a acrescentar ao `~/.zshrc`.
+   Detalhes em [Completions de shell](#completions-de-shell).
+
+Para conferir a qualquer momento se a instalação básica (pontos 1 a 3) está
+de pé, rode [`git alias --doctor`](#--doctor-diagnóstico-da-instalação) — é o
+`install.sh` invertido, só leitura. (O `--doctor` não cobre as completions.)
 
 ## `git alias`
 
@@ -341,6 +351,60 @@ três checagens antes de gravar:
   2.18); numa versão mais antiga, ou sem suporte à opção, a checagem é
   pulada sem erro.
 
+## Completions de shell
+
+`completions/` traz a completion de `git alias` para **bash** e **zsh**. O
+`install.sh` (ponto 4 da [Instalação](#instalação)) faz o symlink para os
+diretórios de completion do usuário; abaixo, o que elas cobrem e como ativar
+à mão se você não usar o `install.sh`.
+
+Em `git alias <TAB>` as duas completam:
+
+- os subcomandos (`help`, `--version`/`-v`, `--list`, `--export`, `--import`,
+  `--unset`, `--rename`, `--doctor`);
+- as flags de cada um — `--list` → `--file`, `--origin`/`-o`; `--import` →
+  `--overwrite`, `--dry-run`;
+- nomes de alias já definidos onde faz sentido: `git alias <nome>`,
+  `git alias --unset <TAB>` e o `<velho>` de
+  `git alias --rename <velho> <TAB>` (a lista sai de
+  `git config --name-only --get-regexp '^alias\.'`, sem o dispatcher
+  `alias.alias`, como no próprio script);
+- `--export` e o `<arquivo>` de `--import` completam nomes de arquivo.
+
+### bash
+
+`completions/git-alias.bash` define a função `_git_alias`, que a completion
+do próprio Git (`git-completion.bash`) procura ao completar `git alias …`.
+Não é um script `source`ável genérico — depende do `git-completion.bash`
+estar carregado (ele já vem com o Git e costuma ser ativado pelo pacote
+`bash-completion` da distro).
+
+O `install.sh` faz o equivalente a:
+
+```sh
+ln -s <repo>/completions/git-alias.bash \
+   "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/git-alias"
+```
+
+Esse diretório é o que o *dynamic loader* do `bash-completion` consulta ao
+completar um comando pela primeira vez — nada a acrescentar ao `~/.bashrc`.
+
+### zsh
+
+`completions/git-alias.zsh` define `_git-alias`, que o `_git` nativo do zsh
+procura para o subcomando `alias`. Não usa `bashcompinit`.
+
+O `install.sh` faz o symlink como `_git-alias` em
+`${XDG_DATA_HOME:-$HOME/.local/share}/zsh/site-functions/` e imprime um
+`PENDENTE`: como ele roda em `sh`, não enxerga o `$fpath` do seu zsh
+interativo. Garanta que o diretório está no `$fpath` **antes** do `compinit`
+no `~/.zshrc`:
+
+```sh
+fpath=("${XDG_DATA_HOME:-$HOME/.local/share}/zsh/site-functions" $fpath)
+autoload -Uz compinit && compinit
+```
+
 ## Versão e release
 
 O projeto segue [Versionamento Semântico](https://semver.org/lang/pt-BR/)
@@ -381,6 +445,10 @@ O runner roda todas as suítes de `tests/`:
   `README.md`, na raiz).
 - `tests/version.sh` — checagem estática: a constante `VERSION` do script é
   igual ao cabeçalho de versão mais recente do `CHANGELOG.md`.
+- `tests/completions.sh` — checagem estática dos arquivos de
+  `completions/`: existem, têm sintaxe válida (`bash -n` / `zsh -n` quando
+  o shell está disponível) e citam cada subcomando e flag de `git alias`
+  (uma regressão que tire um subcomando da completion quebra a suíte).
 
 O script é POSIX sh e precisa passar tanto em `dash` quanto em `bash`. Para
 fixar o shell de cada suíte:
@@ -391,8 +459,9 @@ SHELL_UNDER_TEST=bash sh tests/run.sh
 ```
 
 O CI roda a suíte sob `dash` e `bash` e passa o `shellcheck` em
-`git/bin/git-alias`, `install.sh` e `tests/*.sh`. Ver
-[CONTRIBUTING.md](CONTRIBUTING.md).
+`git/bin/git-alias`, `install.sh`, `tests/*.sh` e
+`completions/git-alias.bash` (o `.zsh` fica de fora — o `shellcheck` não
+cobre zsh). Ver [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Licença
 
