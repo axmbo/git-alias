@@ -13,6 +13,14 @@ projeto estiver na série `0.y`, a superfície de comandos e o formato do
 
 ### Adicionado
 
+- `git alias --doctor`: relatório read-only de diagnóstico da instalação (o
+  inverso do `install.sh`) — confere se o arquivo de aliases versionado está
+  no `include.path` e é detectável (com a resolução do caminho: absoluto,
+  `~/…`, relativo a `$HOME`, cadeia de symlinks), se há aliases no `git
+  config --global` fora dele (não versionados / risco de sombra), se
+  `git/bin` está no `PATH` e se sobrou um `alias.alias` legado sombreando o
+  script. Sai `1` se encontra algo que impede `git alias` de funcionar como
+  esperado (linha `erro:`), `0` caso contrário (`aviso:` não afeta o código).
 - `git alias --rename <velho> <novo>`: renomeia um alias preservando o valor
   exato (newlines internas do corpo inclusive), no lugar de
   `git alias novo "$(...)" && git alias --unset velho`.

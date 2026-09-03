@@ -60,6 +60,10 @@ O script é idempotente e faz / orienta três coisas:
    git config --global --unset alias.alias
    ```
 
+Para conferir a qualquer momento se esses três pontos estão de pé, rode
+[`git alias --doctor`](#--doctor-diagnóstico-da-instalação) — é o `install.sh`
+invertido, só leitura.
+
 ## `git alias`
 
 ```
@@ -77,6 +81,7 @@ git alias <nome> '<cmd>'         Cria ou atualiza um alias
 git alias --unset <nome>         Remove um alias
 git alias --rename <velho> <novo>
                                  Renomeia um alias, preservando o valor
+git alias --doctor               Diagnóstico read-only da instalação
 ```
 
 `git alias <nome> '<cmd>'` e `git alias --unset <nome>` gravam no arquivo de
@@ -211,6 +216,43 @@ o último caractere do valor.
 - `<novo>` igual a `alias`: recusado pela mesma guarda que protege a criação
   (ver abaixo).
 
+### `--doctor`: diagnóstico da instalação
+
+```sh
+git alias --doctor
+```
+
+Relatório **read-only** (não grava nada) que confere se a instalação está de
+pé — o [`install.sh`](#instalação) invertido. Sai `0` quando não há nenhuma
+linha `erro:` no relatório, `1` quando há pelo menos uma (ver
+[Códigos de saída](#códigos-de-saída)); uma linha `aviso:` sozinha não muda o
+código. As seções:
+
+- **`[arquivo de aliases versionado]`** — o `include.path` do `git config
+  --global` aponta para um arquivo com o cabeçalho `# Gerado por: git alias
+  --export`? Para cada entrada de `include.path`, mostra como o Git a
+  interpreta (caminho absoluto, `~/…` → `$HOME`, ou relativo a `$HOME`), se
+  ela resolve num arquivo real (seguindo a cadeia de symlinks) e se o arquivo
+  traz o cabeçalho. Sem arquivo detectado: `aviso:` — `git alias <nome>
+  '<cmd>'` cairia no fallback `git config --global`, sem versionar.
+- **`[git config --global: aliases fora do arquivo]`** — aliases definidos
+  direto no `~/.gitconfig` (ou no fallback XDG), fora do arquivo versionado:
+  não entram no commit e, se a definição vier depois da linha `[include]`,
+  fazem sombra no arquivo. Lista os nomes, marcando os que também existem no
+  arquivo (sombra) e os que só existem no `--global` (não versionados). O
+  dispatcher `alias.alias` fica para a seção seguinte.
+- **`[git/bin no PATH]`** — o Git despacha `git alias` procurando um
+  executável `git-alias` no `PATH`. A checagem passa (`ok:`) quando algum
+  diretório do `PATH` contém um `git-alias` que resolve para este script —
+  seja o próprio diretório do script, seja um symlink para ele dentro de um
+  diretório do `PATH` (layouts tipo GNU stow / dotbot). Nenhum: `erro:` (o
+  subcomando `git alias` não chega a este script).
+- **`[alias.alias legado]`** — resquício da implementação anterior (embutida
+  como `!f() { … }` no `~/.gitconfig`). Qualquer `alias.alias` no `git config
+  --global` tem precedência sobre o script no `PATH` — `git alias` executaria
+  a entrada de config, não este script. Presente: `erro:`, com o comando para
+  removê-la.
+
 ### Guardas ao criar, renomear ou remover um alias
 
 `git alias <nome> '<cmd>'` e o `<novo>` de `git alias --rename` passam por
@@ -266,8 +308,8 @@ podem depender destes três valores.
 
 | Código | Significado       | Exemplos                                                                                   |
 | ------ | ------------------ | ------------------------------------------------------------------------------------------- |
-| `0`    | Sucesso             | Alias criado/consultado/removido/renomeado; `--list`, `--export`, `--version`, `--help`.     |
-| `1`    | Falha esperada      | Consulta de alias inexistente; `--unset`/`--rename` de alias que não existe; `--rename` cujo destino já existe; `--list --file` sem arquivo de aliases incluído; `--rename`/criação cuja limpeza de uma cópia obsoleta falha por um motivo genuíno (lock, permissão), deixando duas definições coexistindo (ou a nova sombreada pela antiga); `--unset` cuja remoção falha pelo mesmo motivo. |
+| `0`    | Sucesso             | Alias criado/consultado/removido/renomeado; `--list`, `--export`, `--version`, `--help`; `--doctor` sem nenhuma linha `erro:` (só `ok:` e/ou `aviso:`). |
+| `1`    | Falha esperada      | Consulta de alias inexistente; `--unset`/`--rename` de alias que não existe; `--rename` cujo destino já existe; `--list --file` sem arquivo de aliases incluído; `--rename`/criação cuja limpeza de uma cópia obsoleta falha por um motivo genuíno (lock, permissão), deixando duas definições coexistindo (ou a nova sombreada pela antiga); `--unset` cuja remoção falha pelo mesmo motivo; `--doctor` com pelo menos uma linha `erro:` (`git/bin` fora do `PATH`, `alias.alias` legado sombreando o script). |
 | `2`    | Erro de uso         | Flag ou argumento inválido/faltando; nome de alias inválido; nome reservado (`alias`/`help`) em criação, `--rename` (`<velho>` ou `<novo>`) ou `--unset`. |
 
 ## Testes

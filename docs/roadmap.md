@@ -88,7 +88,7 @@ raiz + identificador SPDX no README (e opcionalmente cabeçalho
 
 ### F3 — `git alias --doctor` · **v1.0**
 
-- [ ] Relatório read-only: o arquivo de aliases está no `include.path`? é
+- [x] Relatório read-only: o arquivo de aliases está no `include.path`? é
       detectado (cabeçalho ok)? há aliases no `--global` fora do arquivo
       (não-versionados / risco de sombra)? `git/bin` no `PATH`? `alias.alias`
       antigo ainda presente? É o `install.sh` invertido, como diagnóstico.
@@ -200,7 +200,7 @@ raiz + identificador SPDX no README (e opcionalmente cabeçalho
        `docs/releasing.md`).
 5. [x] Lote de polish pequeno: F5 (`--list`), F4 (`--rename`), F6 (guardas),
        F7 (exit codes).
-6. [ ] F3 (`--doctor`).
+6. [x] F3 (`--doctor`).
 7. [ ] **ADR-0004** → F2 (`--import`).
 8. [ ] F8 (completions).
 9. [ ] Reestruturar para repo de ferramenta + reescrever README (ADR-0002);

@@ -1376,6 +1376,425 @@ check "arquivo com cabeçalho antigo (2 linhas) ainda é detectado como incluíd
 check "arquivo com cabeçalho antigo ganha '# Formato: 1' ao ser reescrito" \
 	"# Formato: 1" "$(sed -n '3p' "$LEGACY")"
 
+# =========================================================================
+# git alias --doctor (F3): relatório read-only de diagnóstico da instalação.
+# Cada teste roda num HOME/GIT_CONFIG_GLOBAL isolado (não herda os aliases e
+# o include.path acumulados acima) — mesmo idioma dos testes de fallback XDG.
+# =========================================================================
+
+# --- guarda de uso -------------------------------------------------------
+D_USAGE="$(
+	DH="$SB/doctor-usage"
+	mkdir -p "$DH"
+	HOME="$DH"
+	GIT_CONFIG_GLOBAL="$DH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$DH"
+	out="$("$SCRIPT" --doctor 2>&1)" || true
+	notfound="$(printf '%s' "$out" | grep -qi "não foi encontrado" && echo sim || echo nao)"
+	st=0
+	msg="$("$SCRIPT" --doctor argumento-extra 2>&1 >/dev/null)" || st=$?
+	printf 'notfound=%s st=%s msg=%s' "$notfound" "$st" "$msg"
+)"
+check "--doctor: reconhecido como subcomando e recusa argumento extra (exit 2)" \
+	"notfound=nao st=2 msg=Erro: uso: git alias --doctor" \
+	"$D_USAGE"
+
+# Diretório do próprio script — posto no PATH nos testes de seção abaixo para
+# que a seção "[git/bin no PATH]" reporte "ok:" e não contamine o exit code
+# da seção que está sendo exercitada.
+DSCRIPT_DIR="$(dirname "$SCRIPT")"
+
+# --- [arquivo de aliases versionado]: sem include.path -------------------
+D_NOINC="$(
+	DH="$SB/doctor-noinc"
+	mkdir -p "$DH"
+	HOME="$DH"
+	GIT_CONFIG_GLOBAL="$DH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$DH"
+	st=0
+	out="$(PATH="$DSCRIPT_DIR:$PATH" "$SCRIPT" --doctor)" || st=$?
+	printf 'st=%s\n%s' "$st" "$out"
+)"
+check "--doctor sem include.path: seção [arquivo de aliases versionado] presente" \
+	"sim" "$(printf '%s\n' "$D_NOINC" | grep -qF '[arquivo de aliases versionado]' && echo sim || echo nao)"
+check "--doctor sem include.path: aviso citando include.path" \
+	"sim" "$(printf '%s\n' "$D_NOINC" | grep -Eq 'aviso:.*include\.path|include\.path.*aviso:' && echo sim || echo nao)"
+check "--doctor sem include.path (git/bin no PATH, sem alias.alias legado): exit 0" \
+	"st=0" "$(printf '%s\n' "$D_NOINC" | grep -E '^st=')"
+
+# --- [arquivo de aliases versionado]: arquivo detectado -----------------
+D_DETECT="$(
+	DH="$SB/doctor-detect"
+	mkdir -p "$DH"
+	HOME="$DH"
+	GIT_CONFIG_GLOBAL="$DH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$DH"
+	AFD="$DH/aliases.gitconfig"
+	printf '%s\n' \
+		'# Gerado por: git alias --export' \
+		'# Nao edite a mao; rode o comando novamente para atualizar.' \
+		'# Formato: 1' \
+		'' \
+		'[alias]' \
+		'	co = checkout' >"$AFD"
+	git config --global --add include.path "$AFD"
+	st=0
+	out="$(PATH="$DSCRIPT_DIR:$PATH" "$SCRIPT" --doctor)" || st=$?
+	printf 'st=%s\n%s' "$st" "$out"
+)"
+check "--doctor com arquivo detectado: linha ok: traz o caminho do arquivo" \
+	"sim" "$(printf '%s\n' "$D_DETECT" | grep -F "$SB/doctor-detect/aliases.gitconfig" | grep -q 'ok:' && echo sim || echo nao)"
+check "--doctor com arquivo detectado: a lista de entradas é rotulada como include.path" \
+	"sim" "$(printf '%s\n' "$D_DETECT" | sed -n '/\[arquivo de aliases versionado\]/,/^\[/p' | grep -qi 'include\.path' && echo sim || echo nao)"
+check "--doctor com arquivo detectado: aponta o cabeçalho como motivo da detecção" \
+	"sim" "$(printf '%s\n' "$D_DETECT" | grep -qF '# Gerado por: git alias --export' && echo sim || echo nao)"
+check "--doctor com arquivo detectado: exit 0" \
+	"st=0" "$(printf '%s\n' "$D_DETECT" | grep -E '^st=')"
+
+# --- [arquivo de aliases versionado]: include.path aponta p/ arquivo sem
+#     o cabeçalho (existe, mas não é reconhecido) --------------------------
+D_NOHDR="$(
+	DH="$SB/doctor-nohdr"
+	mkdir -p "$DH"
+	HOME="$DH"
+	GIT_CONFIG_GLOBAL="$DH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$DH"
+	PLAINF="$DH/plain.gitconfig"
+	printf '%s\n' '[alias]' '	co = checkout' >"$PLAINF"
+	git config --global --add include.path "$PLAINF"
+	st=0
+	out="$(PATH="$DSCRIPT_DIR:$PATH" "$SCRIPT" --doctor)" || st=$?
+	printf 'st=%s\n%s' "$st" "$out"
+)"
+check "--doctor: arquivo de include.path que existe mas não tem o cabeçalho é sinalizado" \
+	"sim" "$(printf '%s\n' "$D_NOHDR" | grep -qi 'sem o cabeçalho' && echo sim || echo nao)"
+check "--doctor: arquivo sem cabeçalho — a linha cita o caminho da entrada" \
+	"sim" "$(printf '%s\n' "$D_NOHDR" | grep -F "$SB/doctor-nohdr/plain.gitconfig" | grep -qv 'ok:' && echo sim || echo nao)"
+check "--doctor: arquivo sem cabeçalho — sem erro, só aviso (exit 0)" \
+	"st=0" "$(printf '%s\n' "$D_NOHDR" | grep -E '^st=')"
+
+# --- [arquivo de aliases versionado]: entrada inexistente e classificação
+#     do token (absoluto / relativo a HOME / cadeia de symlinks) ----------
+D_CLASSIFY="$(
+	DH="$SB/doctor-classify"
+	mkdir -p "$DH/sub"
+	HOME="$DH"
+	GIT_CONFIG_GLOBAL="$DH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$DH"
+	# token relativo, apontando p/ um caminho que não existe
+	git config --global --add include.path "nao-existe/aliases.gitconfig"
+	st=0
+	out="$(PATH="$DSCRIPT_DIR:$PATH" "$SCRIPT" --doctor)" || st=$?
+	printf 'st=%s\n%s' "$st" "$out"
+)"
+check "--doctor: entrada de include.path inexistente é marcada 'NÃO existe'" \
+	"sim" "$(printf '%s\n' "$D_CLASSIFY" | grep -F 'nao-existe/aliases.gitconfig' | grep -q 'NÃO existe' && echo sim || echo nao)"
+check "--doctor: token relativo é classificado como relativo a HOME" \
+	"sim" "$(printf '%s\n' "$D_CLASSIFY" | grep -F 'nao-existe/aliases.gitconfig' | grep -q 'relativo a HOME' && echo sim || echo nao)"
+
+# cadeia de links: elo2 -> elo1 -> alvo real (arquivo de aliases de verdade).
+# Diretório sem a palavra "symlink" no nome, para o grep abaixo não casar o
+# próprio caminho do sandbox.
+D_SLINK="$(
+	DH="$SB/doctor-cadeia"
+	mkdir -p "$DH/real"
+	HOME="$DH"
+	GIT_CONFIG_GLOBAL="$DH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$DH"
+	REALF="$DH/real/aliases.gitconfig"
+	printf '%s\n' \
+		'# Gerado por: git alias --export' \
+		'# x' \
+		'# Formato: 1' \
+		'' \
+		'[alias]' >"$REALF"
+	ln -s "$REALF" "$DH/elo1"
+	ln -s "$DH/elo1" "$DH/elo2"
+	git config --global --add include.path "$DH/elo2"
+	st=0
+	out="$(PATH="$DSCRIPT_DIR:$PATH" "$SCRIPT" --doctor)" || st=$?
+	printf 'st=%s\n%s' "$st" "$out"
+)"
+check "--doctor: detectado via cadeia de symlinks — exit 0" \
+	"st=0" "$(printf '%s\n' "$D_SLINK" | grep -E '^st=')"
+check "--doctor: detectado via symlink — aponta o arquivo real ao fim da cadeia" \
+	"sim" "$(printf '%s\n' "$D_SLINK" | grep -qF "$SB/doctor-cadeia/real/aliases.gitconfig" && echo sim || echo nao)"
+check "--doctor: detectado via symlink — sinaliza a travessia de symlink" \
+	"sim" "$(printf '%s\n' "$D_SLINK" | grep -qi 'via symlink' && echo sim || echo nao)"
+
+# --- [git config --global: aliases fora do arquivo]: nada fora do arquivo
+D_GCLEAN="$(
+	DH="$SB/doctor-gclean"
+	mkdir -p "$DH"
+	HOME="$DH"
+	GIT_CONFIG_GLOBAL="$DH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$DH"
+	AFD="$DH/aliases.gitconfig"
+	printf '%s\n' \
+		'# Gerado por: git alias --export' \
+		'# x' \
+		'# Formato: 1' \
+		'' \
+		'[alias]' \
+		'	co = checkout' >"$AFD"
+	git config --global --add include.path "$AFD"
+	st=0
+	out="$(PATH="$DSCRIPT_DIR:$PATH" "$SCRIPT" --doctor)" || st=$?
+	printf 'st=%s\n%s' "$st" "$out"
+)"
+check "--doctor: seção [git config --global: aliases fora do arquivo] presente" \
+	"sim" "$(printf '%s\n' "$D_GCLEAN" | grep -qF 'aliases fora do arquivo' && echo sim || echo nao)"
+check "--doctor: sem aliases no --global fora do arquivo — linha ok:" \
+	"sim" "$(printf '%s\n' "$D_GCLEAN" | grep -E 'ok:.*(fora do arquivo|nenhum alias)' >/dev/null && echo sim || echo nao)"
+check "--doctor: instalação limpa (arquivo detectado, nada solto no --global): exit 0" \
+	"st=0" "$(printf '%s\n' "$D_GCLEAN" | grep -E '^st=')"
+
+# --- [git config --global: aliases fora do arquivo]: com aliases soltos --
+D_GLOOSE="$(
+	DH="$SB/doctor-gloose"
+	mkdir -p "$DH"
+	HOME="$DH"
+	GIT_CONFIG_GLOBAL="$DH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$DH"
+	AFD="$DH/aliases.gitconfig"
+	printf '%s\n' \
+		'# Gerado por: git alias --export' \
+		'# x' \
+		'# Formato: 1' \
+		'' \
+		'[alias]' \
+		'	co = checkout' >"$AFD"
+	git config --global --add include.path "$AFD"
+	git config --global alias.ci commit
+	git config --global alias.st status
+	git config --global alias.alias '!git-alias'
+	st=0
+	out="$(PATH="$DSCRIPT_DIR:$PATH" "$SCRIPT" --doctor)" || st=$?
+	# só a seção 2, p/ os greps não pegarem "ci"/"st" de outras linhas
+	sec="$(printf '%s\n' "$out" | sed -n '/aliases fora do arquivo/,/^\[/p')"
+	printf 'st=%s\n%s' "$st" "$sec"
+)"
+check "--doctor: aliases soltos no --global — linha aviso:" \
+	"sim" "$(printf '%s\n' "$D_GLOOSE" | grep -q 'aviso:' && echo sim || echo nao)"
+check "--doctor: aliases soltos no --global — lista 'ci' como item" \
+	"sim" "$(printf '%s\n' "$D_GLOOSE" | grep -Eq '^ *- ci( |$)' && echo sim || echo nao)"
+check "--doctor: aliases soltos no --global — lista 'st' como item" \
+	"sim" "$(printf '%s\n' "$D_GLOOSE" | grep -Eq '^ *- st( |$)' && echo sim || echo nao)"
+check "--doctor: aliases soltos no --global — NÃO lista o dispatcher 'alias' como item" \
+	"nao" "$(printf '%s\n' "$D_GLOOSE" | grep -Eq '^ *- alias( |$)' && echo sim || echo nao)"
+check "--doctor: aliases soltos no --global são aviso, não erro (sem 'erro:' na seção)" \
+	"nao" "$(printf '%s\n' "$D_GLOOSE" | grep -q 'erro:' && echo sim || echo nao)"
+
+# --- seção 2: distingue sombra (também no arquivo) de não-versionado -----
+D_GSHADOW="$(
+	DH="$SB/doctor-gshadow"
+	mkdir -p "$DH"
+	HOME="$DH"
+	GIT_CONFIG_GLOBAL="$DH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$DH"
+	AFD="$DH/aliases.gitconfig"
+	printf '%s\n' \
+		'# Gerado por: git alias --export' \
+		'# x' \
+		'# Formato: 1' \
+		'' \
+		'[alias]' \
+		'	co = checkout' \
+		'	dup = !echo do-arquivo' >"$AFD"
+	git config --global --add include.path "$AFD"
+	git config --global alias.dup '!echo do-global'
+	git config --global alias.solto '!echo solto'
+	st=0
+	out="$(PATH="$DSCRIPT_DIR:$PATH" "$SCRIPT" --doctor)" || st=$?
+	sec="$(printf '%s\n' "$out" | sed -n '/aliases fora do arquivo/,/^\[/p')"
+	printf 'st=%s\n%s' "$st" "$sec"
+)"
+check "--doctor seção 2: 'dup' (também no arquivo) é marcado como sombra" \
+	"sim" "$(printf '%s\n' "$D_GSHADOW" | grep -E '^ *- dup( |$)' | grep -qi 'sombra\|também no arquivo' && echo sim || echo nao)"
+check "--doctor seção 2: 'solto' (só no --global) é marcado como não versionado" \
+	"sim" "$(printf '%s\n' "$D_GSHADOW" | grep -E '^ *- solto( |$)' | grep -qi 'não versionado' && echo sim || echo nao)"
+check "--doctor seção 2: sombra/não-versionado ainda são aviso (exit 0)" \
+	"st=0" "$(printf '%s\n' "$D_GSHADOW" | grep -E '^st=')"
+
+# --- [git/bin no PATH]: diretório do script no PATH ---------------------
+D_PATH_OK="$(
+	DH="$SB/doctor-pathok"
+	mkdir -p "$DH"
+	HOME="$DH"
+	GIT_CONFIG_GLOBAL="$DH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$DH"
+	AFD="$DH/aliases.gitconfig"
+	printf '%s\n' '# Gerado por: git alias --export' '# x' '# Formato: 1' '' '[alias]' >"$AFD"
+	git config --global --add include.path "$AFD"
+	st=0
+	out="$(PATH="$DSCRIPT_DIR:$PATH" "$SCRIPT" --doctor)" || st=$?
+	sec="$(printf '%s\n' "$out" | sed -n '/\[git\/bin no PATH\]/,/^\[/p')"
+	printf 'st=%s\n%s' "$st" "$sec"
+)"
+check "--doctor: seção [git/bin no PATH] presente" \
+	"sim" "$(printf '%s\n' "$D_PATH_OK" | grep -qF '[git/bin no PATH]' && echo sim || echo nao)"
+check "--doctor: diretório do script no PATH — linha ok: com o caminho" \
+	"sim" "$(printf '%s\n' "$D_PATH_OK" | grep 'ok:' | grep -qF "$DSCRIPT_DIR" && echo sim || echo nao)"
+check "--doctor: diretório do script no PATH — exit 0" \
+	"st=0" "$(printf '%s\n' "$D_PATH_OK" | grep -E '^st=')"
+
+# --- [git/bin no PATH]: diretório do script FORA do PATH ---------------
+# PATH depurado do dir do script (o ambiente de quem roda a suíte pode
+# tê-lo — install.sh instrui isso — mas o CI não): teste determinístico
+# nos dois. git continua acessível pelos demais componentes.
+D_PATH_ERR="$(
+	DH="$SB/doctor-patherr"
+	mkdir -p "$DH"
+	HOME="$DH"
+	GIT_CONFIG_GLOBAL="$DH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$DH"
+	AFD="$DH/aliases.gitconfig"
+	printf '%s\n' '# Gerado por: git alias --export' '# x' '# Formato: 1' '' '[alias]' >"$AFD"
+	git config --global --add include.path "$AFD"
+	CLEANPATH="$(printf '%s\n' "$PATH" | tr ':' '\n' | grep -vxF "$DSCRIPT_DIR" | paste -sd: -)"
+	st=0
+	out="$(PATH="$CLEANPATH" "$SCRIPT" --doctor)" || st=$?
+	sec="$(printf '%s\n' "$out" | sed -n '/\[git\/bin no PATH\]/,/^\[/p')"
+	printf 'st=%s\n%s' "$st" "$sec"
+)"
+check "--doctor: script fora do PATH — linha erro:" \
+	"sim" "$(printf '%s\n' "$D_PATH_ERR" | grep -Eq 'erro:.*PATH|não está no PATH' && echo sim || echo nao)"
+check "--doctor: script fora do PATH — exit 1" \
+	"st=1" "$(printf '%s\n' "$D_PATH_ERR" | grep -E '^st=')"
+
+# --- [git/bin no PATH]: script alcançável por symlink dentro de um dir do
+#     PATH (layout stow/dotbot) — instalação VÁLIDA, não pode dar erro ----
+# ~/bin/git-alias -> <script real>, com ~/bin no PATH e o dir real FORA
+# dele. "git alias" funciona; --doctor não pode alegar que está quebrado.
+D_PATH_SYMLINK="$(
+	DH="$SB/doctor-pathsym"
+	mkdir -p "$DH/bin"
+	HOME="$DH"
+	GIT_CONFIG_GLOBAL="$DH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$DH"
+	AFD="$DH/aliases.gitconfig"
+	printf '%s\n' '# Gerado por: git alias --export' '# x' '# Formato: 1' '' '[alias]' >"$AFD"
+	git config --global --add include.path "$AFD"
+	ln -s "$SCRIPT" "$DH/bin/git-alias"
+	CLEANPATH="$(printf '%s\n' "$PATH" | tr ':' '\n' | grep -vxF "$DSCRIPT_DIR" | paste -sd: -)"
+	# (a) invocado via o symlink no PATH, como o Git despacharia
+	st=0
+	sa="$(PATH="$DH/bin:$CLEANPATH" git-alias --doctor)" || st=$?
+	via_sym="$(printf '%s\n' "$sa" | sed -n '/\[git\/bin no PATH\]/,/^\[/p' | grep -q 'ok:' && echo ok || echo nao)"
+	# (b) invocado pelo caminho real, sendo o symlink no PATH o setup real
+	st2=0
+	sb="$(PATH="$DH/bin:$CLEANPATH" "$SCRIPT" --doctor)" || st2=$?
+	via_real="$(printf '%s\n' "$sb" | sed -n '/\[git\/bin no PATH\]/,/^\[/p' | grep -q 'ok:' && echo ok || echo nao)"
+	printf 'st=%s sym=%s st2=%s real=%s' "$st" "$via_sym" "$st2" "$via_real"
+)"
+check "--doctor: script alcançável por symlink num dir do PATH — ok, exit 0 (nos dois modos de invocação)" \
+	"st=0 sym=ok st2=0 real=ok" "$D_PATH_SYMLINK"
+
+# --- [alias.alias legado]: sem alias.alias -----------------------------
+D_AA_OK="$(
+	DH="$SB/doctor-aaok"
+	mkdir -p "$DH"
+	HOME="$DH"
+	GIT_CONFIG_GLOBAL="$DH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$DH"
+	AFD="$DH/aliases.gitconfig"
+	printf '%s\n' '# Gerado por: git alias --export' '# x' '# Formato: 1' '' '[alias]' >"$AFD"
+	git config --global --add include.path "$AFD"
+	st=0
+	out="$(PATH="$DSCRIPT_DIR:$PATH" "$SCRIPT" --doctor)" || st=$?
+	sec="$(printf '%s\n' "$out" | sed -n '/\[alias\.alias legado\]/,$p')"
+	printf 'st=%s\n%s' "$st" "$sec"
+)"
+check "--doctor: seção [alias.alias legado] presente" \
+	"sim" "$(printf '%s\n' "$D_AA_OK" | grep -qF '[alias.alias legado]' && echo sim || echo nao)"
+check "--doctor: sem alias.alias — linha ok:" \
+	"sim" "$(printf '%s\n' "$D_AA_OK" | grep -q 'ok:' && echo sim || echo nao)"
+check "--doctor: instalação sã completa — exit 0" \
+	"st=0" "$(printf '%s\n' "$D_AA_OK" | grep -E '^st=')"
+
+# --- [alias.alias legado]: alias.alias presente ----------------------
+D_AA_ERR="$(
+	DH="$SB/doctor-aaerr"
+	mkdir -p "$DH"
+	HOME="$DH"
+	GIT_CONFIG_GLOBAL="$DH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$DH"
+	AFD="$DH/aliases.gitconfig"
+	printf '%s\n' '# Gerado por: git alias --export' '# x' '# Formato: 1' '' '[alias]' >"$AFD"
+	git config --global --add include.path "$AFD"
+	git config --global alias.alias '!f() { echo velho; }; f'
+	st=0
+	out="$(PATH="$DSCRIPT_DIR:$PATH" "$SCRIPT" --doctor)" || st=$?
+	sec="$(printf '%s\n' "$out" | sed -n '/\[alias\.alias legado\]/,$p')"
+	printf 'st=%s\n%s' "$st" "$sec"
+)"
+check "--doctor: alias.alias presente — linha erro:" \
+	"sim" "$(printf '%s\n' "$D_AA_ERR" | grep -q 'erro:' && echo sim || echo nao)"
+check "--doctor: alias.alias presente — instrui a remoção" \
+	"sim" "$(printf '%s\n' "$D_AA_ERR" | grep -qF 'git config --global --unset alias.alias' && echo sim || echo nao)"
+check "--doctor: alias.alias presente — exit 1" \
+	"st=1" "$(printf '%s\n' "$D_AA_ERR" | grep -E '^st=')"
+
+# --- vários erros ao mesmo tempo: exit 1 (nunca 2), todos reportados ----
+D_MULTI="$(
+	DH="$SB/doctor-multi"
+	mkdir -p "$DH"
+	HOME="$DH"
+	GIT_CONFIG_GLOBAL="$DH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$DH"
+	AFD="$DH/aliases.gitconfig"
+	printf '%s\n' '# Gerado por: git alias --export' '# x' '# Formato: 1' '' '[alias]' >"$AFD"
+	git config --global --add include.path "$AFD"
+	git config --global alias.alias '!git-alias'
+	CLEANPATH="$(printf '%s\n' "$PATH" | tr ':' '\n' | grep -vxF "$DSCRIPT_DIR" | paste -sd: -)"
+	st=0
+	out="$(PATH="$CLEANPATH" "$SCRIPT" --doctor)" || st=$?
+	nerr="$(printf '%s\n' "$out" | grep -c 'erro:')"
+	printf 'st=%s nerr=%s' "$st" "$nerr"
+)"
+check "--doctor com erro de PATH e de alias.alias: exit 1 (não 2), dois 'erro:'" \
+	"st=1 nerr=2" "$D_MULTI"
+
+# --- read-only: --doctor não altera arquivo de aliases nem o git config -
+D_READONLY="$(
+	DH="$SB/doctor-ro"
+	mkdir -p "$DH"
+	HOME="$DH"
+	GIT_CONFIG_GLOBAL="$DH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$DH"
+	AFD="$DH/aliases.gitconfig"
+	printf '%s\n' \
+		'# Gerado por: git alias --export' '# x' '# Formato: 1' '' \
+		'[alias]' '	co = checkout' >"$AFD"
+	git config --global --add include.path "$AFD"
+	git config --global alias.solto '!echo x'
+	git config --global alias.alias '!git-alias'
+	before_af="$(cat "$AFD")"
+	before_gc="$(cat "$DH/.gitconfig")"
+	PATH="$DSCRIPT_DIR:$PATH" "$SCRIPT" --doctor >/dev/null 2>&1 || true
+	af_igual="$([ "$before_af" = "$(cat "$AFD")" ] && echo sim || echo nao)"
+	gc_igual="$([ "$before_gc" = "$(cat "$DH/.gitconfig")" ] && echo sim || echo nao)"
+	printf 'af=%s gc=%s' "$af_igual" "$gc_igual"
+)"
+check "--doctor é read-only: não toca no arquivo de aliases nem no ~/.gitconfig" \
+	"af=sim gc=sim" "$D_READONLY"
+
 echo
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]

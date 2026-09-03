@@ -14,6 +14,7 @@
 #   git alias --unset <nome>         Remove um alias
 #   git alias --rename <velho> <novo>
 #                                    Renomeia um alias, preservando o valor
+#   git alias --doctor               Diagnóstico read-only da instalação
 #
 # Nota: "git alias --help" é interceptado pelo próprio Git (ele tenta abrir a
 # man page "git-alias", que não existe). Use "git alias" ou "git alias help".
@@ -55,6 +56,7 @@ Sintaxe de uso:
   git alias <nome> '<cmd>'         (Cria ou atualiza um atalho)
   git alias --unset <nome>         (Remove um atalho)
   git alias --rename <velho> <novo> (Renomeia um atalho, preservando o valor)
+  git alias --doctor               (Diagnostico read-only da instalacao)
 
 Exemplos:
   git alias teste '!echo teste # Meu comando'
@@ -425,25 +427,35 @@ warn_if_builtin_shadow() {
 	return 0
 }
 
+# Expande um token de include.path como o Git faz para a camada --global:
+# caminho absoluto passa reto; "~" e "~/…" e caminho relativo resolvem
+# contra $HOME (onde mora o ~/.gitconfig). Um global fora de $HOME (layout
+# XDG) e "~outrousuário/" ficam de fora de propósito — o install.sh grava
+# caminho absoluto. NÃO resolve symlinks (isso é papel de resolve_link,
+# quando o chamador precisa). Fonte única dessa regra: alias_file (detecção)
+# e o --doctor (exibição) dependem dela e não podem divergir.
+resolve_include_token() {
+	# SC2088: os "~" abaixo são patterns de case (casam o literal que o git
+	# grava em include.path), não tentativas de expandir til — a expansão
+	# para $HOME é feita à mão no corpo do ramo.
+	# shellcheck disable=SC2088
+	case "$1" in
+	/*) printf '%s\n' "$1" ;;
+	'~') printf '%s\n' "$HOME" ;;
+	'~/'*) printf '%s\n' "$HOME/${1#'~/'}" ;;
+	*) printf '%s\n' "$HOME/$1" ;;
+	esac
+}
+
 # Descobre o arquivo de aliases versionado: o primeiro caminho em
 # include.path (do config global) cujo conteúdo tem o cabeçalho que este
 # script escreve em --export. Escreve o caminho na saída padrão, ou nada se
-# nenhum casar. Resolve "~/" e caminho relativo (contra $HOME, onde mora o
-# ~/.gitconfig; um global fora de $HOME, ex. XDG, e "~user/" ficam de fora);
-# ignora o que não for arquivo legível.
+# nenhum casar. Usa resolve_include_token para a expansão; ignora o que não
+# for arquivo legível.
 alias_file() {
 	git config --global --get-all include.path 2>/dev/null \
 		| while IFS= read -r p; do
-			# SC2088: os "~" abaixo são patterns de case (casam o literal
-			# que o git grava em include.path), não tentativas de expandir
-			# til — a expansão para $HOME é feita à mão no corpo do ramo.
-			# shellcheck disable=SC2088
-			case "$p" in
-			/*) ;;
-			'~') p="$HOME" ;;
-			'~/'*) p="$HOME/${p#'~/'}" ;;
-			*) p="$HOME/$p" ;;
-			esac
+			p="$(resolve_include_token "$p")"
 			[ -f "$p" ] || continue
 			if head -n 3 "$p" | grep -qF '# Gerado por: git alias --export'; then
 				printf '%s\n' "$p"
@@ -470,6 +482,183 @@ alias_version() {
 	else
 		printf '%s\n' "$VERSION"
 	fi
+}
+
+# Uma linha de diagnóstico para o token <p> ($1) de include.path: como o
+# Git o interpreta (caminho absoluto, "~"/"~/" contra $HOME, ou relativo a
+# $HOME — mesma resolução de alias_file), se ele atravessa symlink e se
+# aponta num arquivo com o cabeçalho de "git alias --export". Só descreve;
+# não decide exit code. Recuo de 9 espaços para alinhar sob uma linha
+# "  aviso:"/"  ok:".
+doctor_include_line() {
+	dil_p="$1"
+	dil_abs="$(resolve_include_token "$dil_p")"
+	# Só o rótulo de exibição; a expansão de fato é resolve_include_token.
+	# shellcheck disable=SC2088
+	case "$dil_p" in
+	/*) dil_kind='absoluto' ;;
+	'~') dil_kind='"~" = HOME' ;;
+	'~/'*) dil_kind='"~/…" sob HOME' ;;
+	*) dil_kind='relativo a HOME' ;;
+	esac
+	dil_real="$(resolve_link "$dil_abs")"
+	if [ "$dil_real" != "$dil_abs" ]; then
+		dil_link=" -> (via symlink) $dil_real"
+	else
+		dil_link=''
+	fi
+	if [ ! -f "$dil_real" ]; then
+		dil_status='NÃO existe'
+	elif head -n 3 "$dil_real" | grep -qF '# Gerado por: git alias --export'; then
+		dil_status='arquivo de aliases (cabeçalho presente)'
+	else
+		dil_status='arquivo existe, mas sem o cabeçalho de git alias --export'
+	fi
+	printf '         %s  [%s]%s — %s\n' "$dil_p" "$dil_kind" "$dil_link" "$dil_status"
+}
+
+# <path> ($1) com o symlink do último componente seguido (resolve_link) e o
+# diretório resultante normalizado por "cd -- ... && pwd" (some com ".",
+# ".." e barras dobradas). Ecoa "<dir>/<base>", ou nada se o diretório não
+# resolver. Usado para comparar dois caminhos pela identidade do arquivo
+# real, não pela string crua.
+norm_real() {
+	nr_p="$(resolve_link "$1")"
+	nr_dir="$(cd -- "$(dirname -- "$nr_p")" 2>/dev/null && pwd)" || return 0
+	printf '%s/%s\n' "$nr_dir" "$(basename -- "$nr_p")"
+}
+
+# Ecoa o componente do PATH que faz o Git despachar "git alias" para ESTE
+# script: um diretório do PATH que contém um "git-alias" cujo arquivo real
+# (norm_real) é <self> ($1, já passado por norm_real). Cobre tanto o
+# diretório real no PATH quanto um symlink para o script dentro de um
+# diretório do PATH (layouts stow/dotbot); comparar só o diretório
+# resolvido do script contra as strings cruas do PATH não pegaria o
+# segundo caso. Vazio se nenhum componente serve. IFS e glob-off contidos
+# no subshell.
+doctor_dispatch_dir() {
+	ddd_self="$1"
+	[ -n "$ddd_self" ] || return 0
+	(
+		IFS=:
+		set -f
+		# shellcheck disable=SC2086
+		for ddd_d in $PATH; do
+			[ -n "$ddd_d" ] || ddd_d=.
+			ddd_abs="$(cd -- "$ddd_d" 2>/dev/null && pwd)" || continue
+			[ -f "$ddd_abs/git-alias" ] || continue
+			if [ "$(norm_real "$ddd_abs/git-alias")" = "$ddd_self" ]; then
+				printf '%s\n' "$ddd_abs"
+				exit 0
+			fi
+		done
+		exit 1
+	)
+}
+
+# Relatório read-only de diagnóstico da instalação — o "install.sh
+# invertido". Não grava nada. Quatro seções: (1) o arquivo de aliases
+# versionado está no include.path e é detectável; (2) há aliases no
+# git config --global fora dele; (3) git/bin está no PATH; (4) sobrou um
+# alias.alias legado. Cada linha é prefixada por "ok:", "aviso:" ou
+# "erro:". Retorna 0 quando não emite nenhuma linha "erro:", 1 quando
+# emite pelo menos uma.
+#
+# Ao contrário do resto do script (onde "Aviso:"/"Erro:" vão para stderr),
+# o relatório inteiro vai para stdout: ele É a saída de dados do comando,
+# como em --list/--export. stderr fica só para o erro de uso do próprio
+# --doctor (argumento extra), tratado no case arm.
+alias_doctor() {
+	doctor_errs=0
+
+	echo "[arquivo de aliases versionado]"
+	doctor_incs="$(git config --global --get-all include.path 2>/dev/null || true)"
+	doctor_af="$(alias_file)"
+	if [ -z "$doctor_incs" ]; then
+		echo "  aviso: nenhum include.path no git config --global."
+		echo "         'git alias <nome> \"<cmd>\"' gravaria no git config --global"
+		echo "         (fallback), sem versionar. Rode o install.sh."
+	else
+		echo "  include.path (git config --global), uma linha por entrada:"
+		printf '%s\n' "$doctor_incs" | while IFS= read -r doctor_p; do
+			[ -n "$doctor_p" ] || continue
+			doctor_include_line "$doctor_p"
+		done
+		if [ -n "$doctor_af" ]; then
+			echo "  ok: arquivo de aliases detectado — $doctor_af"
+			echo "      (reconhecido pelo cabeçalho '# Gerado por: git alias --export')"
+		else
+			echo "  aviso: nenhuma das entradas acima traz o cabeçalho"
+			echo "         '# Gerado por: git alias --export'."
+			echo "         Rode 'git alias --export <arquivo>' para gerar um."
+		fi
+	fi
+
+	echo
+	echo "[git config --global: aliases fora do arquivo]"
+	# Nomes de alias que moram nos arquivos físicos do --global (~/.gitconfig
+	# e/ou fallback XDG) — não no arquivo incluído, que "git config --global"
+	# nem lê. alias_names já enumera de forma segura para valor multilinha e
+	# já omite o dispatcher "alias" (que fica para a seção seguinte).
+	doctor_gnames="$(
+		global_backing_files | while IFS= read -r doctor_gf; do
+			alias_names "$doctor_gf"
+		done | sort -u
+	)"
+	if [ -z "$doctor_gnames" ]; then
+		echo "  ok: nenhum alias no git config --global fora do arquivo incluído."
+	else
+		echo "  aviso: aliases definidos direto no git config --global, fora do arquivo:"
+		printf '%s\n' "$doctor_gnames" | while IFS= read -r doctor_n; do
+			if [ -n "$doctor_af" ] &&
+				git config --file "$doctor_af" --get "alias.$doctor_n" >/dev/null 2>&1; then
+				echo "         - $doctor_n (também no arquivo — sombra se vier depois do [include])"
+			else
+				echo "         - $doctor_n (não versionado)"
+			fi
+		done
+		echo "         Não entram no commit; se a definição vier depois do [include],"
+		echo "         faz sombra no arquivo. Migre com 'git alias --export <arquivo>'"
+		echo "         ou recrie cada um com 'git alias <nome> \"<cmd>\"'."
+	fi
+
+	echo
+	echo "[git/bin no PATH]"
+	doctor_self="$(norm_real "$0")"
+	doctor_selfdir="${doctor_self%/*}"
+	doctor_hit="$(doctor_dispatch_dir "$doctor_self")"
+	if [ -z "$doctor_self" ]; then
+		echo "  aviso: não foi possível determinar o caminho do próprio script."
+	elif [ -n "$doctor_hit" ]; then
+		if [ "$doctor_hit" = "$doctor_selfdir" ]; then
+			echo "  ok: $doctor_hit está no PATH — o Git despacha 'git alias' para cá."
+		else
+			echo "  ok: $doctor_hit (no PATH) tem um 'git-alias' que aponta para este script."
+		fi
+	else
+		echo "  erro: nenhum diretório do PATH tem um 'git-alias' que resolva para este script."
+		echo "        (este script: $doctor_self)"
+		echo "        O Git não despacha 'git alias' para cá como subcomando."
+		echo "        Acrescente ao seu shell rc: export PATH=\"$doctor_selfdir:\$PATH\""
+		doctor_errs=$((doctor_errs + 1))
+	fi
+
+	echo
+	echo "[alias.alias legado]"
+	if doctor_aa="$(global_get 'alias.alias')"; then
+		doctor_aa1="$(printf '%s\n' "$doctor_aa" | head -n 1)"
+		[ -n "$doctor_aa1" ] || doctor_aa1='(valor vazio)'
+		echo "  erro: alias.alias presente no git config --global:"
+		echo "        $doctor_aa1"
+		echo "        Um alias tem precedência sobre o script git-alias no PATH —"
+		echo "        'git alias' executaria esta entrada, não este script."
+		echo "        Remova: git config --global --unset alias.alias"
+		doctor_errs=$((doctor_errs + 1))
+	else
+		echo "  ok: nenhuma entrada alias.alias no git config --global."
+	fi
+
+	[ "$doctor_errs" -eq 0 ]
 }
 
 main() {
@@ -624,6 +813,17 @@ main() {
 		fi
 		alias_export "${2:-}"
 		return 0
+		;;
+	--doctor)
+		if [ "$#" -ne 1 ]; then
+			echo "Erro: uso: git alias --doctor" >&2
+			return 2
+		fi
+		if alias_doctor; then
+			return 0
+		else
+			return 1
+		fi
 		;;
 	--rename)
 		old="${2:-}"
