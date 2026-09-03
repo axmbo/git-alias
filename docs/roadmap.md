@@ -60,22 +60,25 @@ raiz + identificador SPDX no README (e opcionalmente cabeçalho
 
 ### F2 — Import de alias · **v1.0** · ADR-0004
 
-- [ ] `git alias --import <arquivo>` (`-` = stdin): lê `alias.*` da fonte,
+- [x] `git alias --import <arquivo>` (`-` = stdin): lê `alias.*` da fonte,
       funde na seção `[alias]` do arquivo versionado, renormaliza.
-- [ ] Colisão (fonte e arquivo definem o mesmo nome com valor diferente):
+- [x] Colisão (fonte e arquivo definem o mesmo nome com valor diferente):
       **pular e reportar** por padrão
       (`"4 importados; 2 já existentes com valor diferente: co, st (use --overwrite)"`).
       Valor idêntico dos dois lados = no-op silencioso.
-- [ ] `--overwrite`: na colisão, a fonte vence.
-- [ ] `--dry-run`: mostra o que mudaria sem gravar.
-- [ ] Omitir `alias.alias` (igual ao `--export`).
-- [ ] **Não** tocar no `git config --global` (import de fonte externa é só
+- [x] `--overwrite`: na colisão, a fonte vence.
+- [x] `--dry-run`: mostra o que mudaria sem gravar.
+- [x] Omitir `alias.alias` (igual ao `--export`).
+- [x] **Não** tocar no `git config --global` (import de fonte externa é só
       isso).
-- [ ] Nota de segurança (README + saída do comando): alias com `!` executa
+- [x] Nota de segurança (README + saída do comando): alias com `!` executa
       shell; importar de fonte não confiável = executar comando arbitrário ao
       invocar o alias.
-- [ ] ADR-0004 "Semântica de merge do --import": merge não-destrutivo,
-      skip-on-collision, `--overwrite`, `--dry-run`.
+- [x] ADR-0004 "Semântica de merge do --import": merge não-destrutivo,
+      skip-on-collision, `--overwrite`, `--dry-run`. (Squash `73747b5`;
+      entrada `alias.*` reservada/inválida/multivalorada na fonte **ou** no
+      arquivo é ignorada com aviso; escrita que falha de verdade → exit 1;
+      KI-1 anotada para o `--import`. `tests/git-alias.sh`: 307 asserções.)
 - [ ] (v1.1) `git alias --import <src> <nome>...`: subconjunto nomeado.
 - [ ] (v1.1) `git alias --adopt`: "adotar do `--global`" — funde os aliases do
       `~/.gitconfig` no arquivo **e** limpa as cópias redundantes; mexe em
@@ -201,7 +204,7 @@ raiz + identificador SPDX no README (e opcionalmente cabeçalho
 5. [x] Lote de polish pequeno: F5 (`--list`), F4 (`--rename`), F6 (guardas),
        F7 (exit codes).
 6. [x] F3 (`--doctor`).
-7. [ ] **ADR-0004** → F2 (`--import`).
+7. [x] **ADR-0004** → F2 (`--import`).
 8. [ ] F8 (completions).
 9. [ ] Reestruturar para repo de ferramenta + reescrever README (ADR-0002);
        fechar o CI (matriz de versões de git + runner macOS, hoje TODO/job
