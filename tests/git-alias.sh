@@ -1313,8 +1313,14 @@ git config --global --add include.path "relat-dir/aliases.gitconfig"
 ( cd "$SB/real" && "$SCRIPT" relat '!echo r' >/dev/null )
 check "include.path relativo é detectado (grava no arquivo incluído)" \
 	"!echo r" "$(git config --file "$RELF" alias.relat 2>/dev/null || true)"
+# Refere o global do sandbox pelo caminho literal ($SB/.gitconfig, fixado no
+# topo), não por "$GIT_CONFIG_GLOBAL": os blocos de simulação de falha acima
+# reatribuem essa variável dentro de $(...), e lê-la aqui faria o shellcheck
+# apontar SC2030/SC2031 (a modificação em subshell é intencional e local a
+# cada bloco, mas o par assign-em-subshell / leitura-no-escopo-externo é o
+# gatilho do aviso).
 check "include.path relativo: nada foi para o ~/.gitconfig cru" \
-	"" "$(git config --file "$GIT_CONFIG_GLOBAL" alias.relat 2>/dev/null || true)"
+	"" "$(git config --file "$SB/.gitconfig" alias.relat 2>/dev/null || true)"
 
 # --- git alias --version / -v ------------------------------------------------
 # Cópia do script fora de qualquer repositório git: exercita o caminho em que
