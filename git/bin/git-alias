@@ -9,6 +9,9 @@
 #                                    Lista os aliases
 #   git alias --export [<arquivo>]   Exporta em formato gitconfig; sem
 #                                    <arquivo>, escreve na saída padrão
+#   git alias --import <arquivo>     Funde os aliases de <arquivo> (- = stdin)
+#                                    no arquivo versionado; [--overwrite]
+#                                    [--dry-run]
 #   git alias <nome>                 Mostra a definição de um alias
 #   git alias <nome> '<cmd>'         Cria ou atualiza um alias
 #   git alias --unset <nome>         Remove um alias
@@ -52,6 +55,9 @@ Sintaxe de uso:
                                     (Lista os atalhos)
   git alias --export [<arquivo>]   (Exporta os atalhos em formato gitconfig;
                                     sem <arquivo>, escreve na saida padrao)
+  git alias --import <arquivo>     (Funde os atalhos de <arquivo> no arquivo
+                                    versionado; - = entrada padrao;
+                                    [--overwrite] [--dry-run])
   git alias <nome>                 (Mostra a definicao de um atalho especifico)
   git alias <nome> '<cmd>'         (Cria ou atualiza um atalho)
   git alias --unset <nome>         (Remove um atalho)
@@ -179,6 +185,220 @@ alias_export() {
 	fi
 }
 
+# "<n> <palavra>", pluralizando com "-s" quando n != 1 (ex.: 1 -> "1
+# importado"; 3 -> "3 importados"; "já existente" -> "2 já existentes").
+# Só para montar o relatório do --import.
+import_count_phrase() {
+	if [ "$1" -eq 1 ]; then
+		printf '%s %s' "$1" "$2"
+	else
+		printf '%s %ss' "$1" "$2"
+	fi
+}
+
+# Ecoa "<n> <a, b, c>": a contagem e a lista ordenada (LC_ALL=C), separadas
+# por um espaço. $1: os nomes, um por linha (uma chave do git config pode
+# conter espaço — subseção [alias "a b"] — ou "*", mas nunca newline). Usada
+# nas seções de lista do relatório do --import; o chamador separa em
+# "${x%% *}" (contagem) e "${x#* }" (lista) — a 1ª quebra é sempre o
+# separador contagem/lista.
+import_fmt_list() {
+	ifl_n=0
+	ifl_list=''
+	while IFS= read -r ifl_x; do
+		[ -n "$ifl_x" ] || continue
+		ifl_n=$((ifl_n + 1))
+		if [ -n "$ifl_list" ]; then
+			ifl_list="$ifl_list, $ifl_x"
+		else
+			ifl_list="$ifl_x"
+		fi
+	done <<EOF
+$(printf '%s\n' "$1" | LC_ALL=C sort)
+EOF
+	printf '%s %s' "$ifl_n" "$ifl_list"
+}
+
+# Ecoa "; <contagem><meio><lista><fim>" para a lista de nomes $2 (um por
+# linha), ou nada se ela estiver vazia. $1: substantivo para
+# import_count_phrase (pluraliza em -s), ou "" para usar a contagem crua.
+# $3: texto entre a contagem e a lista. $4: texto após a lista.
+import_report_section() {
+	[ -n "$2" ] || return 0
+	irs_fl="$(import_fmt_list "$2")"
+	if [ -n "$1" ]; then
+		irs_c="$(import_count_phrase "${irs_fl%% *}" "$1")"
+	else
+		irs_c="${irs_fl%% *}"
+	fi
+	printf '; %s%s%s%s' "$irs_c" "$3" "${irs_fl#* }" "$4"
+}
+
+# Núcleo do --import: <src> ($1) é um gitconfig válido, já resolvido para um
+# caminho real (stdin já materializada em arquivo pelo chamador). $2: 1 =
+# --overwrite (a fonte vence na colisão de valor). $3: 1 = --dry-run (só
+# relata, não grava). Funde as entradas alias.* de <src> na seção [alias] do
+# arquivo de aliases versionado detectado, sem destruir o que já existe;
+# imprime o relatório em stdout e, se algum alias importado tiver valor
+# começando por "!", a nota de segurança em stderr. Retorna 1 se nenhum
+# arquivo versionado é detectado; 0 caso contrário (colisão pulada e entrada
+# ignorada são relatório, não falha).
+import_merge() {
+	im_src="$1"
+	im_overwrite="$2"
+	im_dryrun="$3"
+
+	im_file="$(alias_file)"
+	if [ -z "$im_file" ]; then
+		echo "Erro: nenhum arquivo de aliases versionado detectado — nada para importar. Rode o install.sh ou 'git alias --export <arquivo>' e tente de novo." >&2
+		return 1
+	fi
+
+	im_prefix=''
+	[ "$im_dryrun" -eq 1 ] && im_prefix='[dry-run] '
+
+	# alias_names omite alias.alias e é seguro para valor multilinha.
+	im_names="$(alias_names "$im_src")"
+	if [ -z "$im_names" ]; then
+		printf '%snenhum alias na fonte; nada a importar.\n' "$im_prefix"
+		return 0
+	fi
+
+	im_imported=0
+	im_overwritten=0
+	im_collided=''
+	im_ignored=''
+	im_failed=''
+	im_bang=0
+	# Separador das listas acumuladas abaixo. Newline, não espaço: uma chave
+	# do git config pode conter espaço (subseção [alias "a b"] -> "a b.foo")
+	# ou "*" ([alias "*"] -> "*.foo"), nunca newline.
+	im_nl='
+'
+
+	# "while read" (não "for ... in $im_names") pelo mesmo motivo: um nome com
+	# espaço seria word-split e um com "*" sofreria glob contra o CWD. O
+	# heredoc mantém o loop no shell atual — os contadores têm de sobreviver.
+	while IFS= read -r im_name; do
+		[ -n "$im_name" ] || continue
+		# fora do charset que a ferramenta aceita, ou nome reservado: ignora
+		case "$im_name" in
+		[!a-z]* | *[!a-z0-9-]*)
+			im_ignored="$im_ignored$im_name$im_nl"
+			continue
+			;;
+		esac
+		if is_reserved_alias_name "$im_name"; then
+			im_ignored="$im_ignored$im_name$im_nl"
+			continue
+		fi
+		# multivalor na fonte: mesma recusa do --rename (e da KI-1) — pular
+		# sem gravar, em vez de deixar um valor se perder na renormalização.
+		if alias_is_multivalued "alias.$im_name" --file "$im_src"; then
+			im_ignored="$im_ignored$im_name$im_nl"
+			continue
+		fi
+		if ! im_val="$(git config --file "$im_src" --get "alias.$im_name" 2>/dev/null)"; then
+			im_ignored="$im_ignored$im_name$im_nl"
+			continue
+		fi
+		# multivalor no DESTINO (arquivo versionado editado à mão): não dá
+		# para fundir num nome que a própria ferramenta não renormaliza sem
+		# colapsar (KI-1), e "--get" abaixo já devolveria só o último valor.
+		# Pular, simétrico ao guard da fonte acima — nunca "use --overwrite"
+		# (que aqui só produziria "cannot overwrite multiple values").
+		if alias_is_multivalued "alias.$im_name" --file "$im_file"; then
+			im_ignored="$im_ignored$im_name$im_nl"
+			continue
+		fi
+
+		if im_cur="$(git config --file "$im_file" --get "alias.$im_name" 2>/dev/null)"; then
+			# já existe no arquivo
+			if [ "$im_cur" = "$im_val" ]; then
+				continue
+			fi
+			if [ "$im_overwrite" -ne 1 ]; then
+				im_collided="$im_collided$im_name$im_nl"
+				continue
+			fi
+			im_kind=overwrite
+		else
+			im_kind=import
+		fi
+
+		if [ "$im_dryrun" -ne 1 ]; then
+			# Escrita que falha por um motivo genuíno (lock, permissão,
+			# disco): não conta como importada e leva a exit 1 (ADR-0004).
+			if ! git config --file "$im_file" "alias.$im_name" "$im_val" 2>/dev/null; then
+				im_failed="$im_failed$im_name$im_nl"
+				continue
+			fi
+		fi
+		case "$im_val" in '!'*) im_bang=1 ;; esac
+		if [ "$im_kind" = import ]; then
+			im_imported=$((im_imported + 1))
+		else
+			im_overwritten=$((im_overwritten + 1))
+		fi
+	done <<EOF
+$im_names
+EOF
+
+	if [ "$im_dryrun" -ne 1 ] && [ "$((im_imported + im_overwritten))" -gt 0 ]; then
+		normalize_or_warn "$im_file"
+	fi
+
+	im_report="$(import_count_phrase "$im_imported" importado)"
+	if [ "$im_overwritten" -gt 0 ]; then
+		im_report="$im_report; $(import_count_phrase "$im_overwritten" sobrescrito)"
+	fi
+	im_report="$im_report$(import_report_section 'já existente' "$im_collided" ' com valor diferente: ' ' (use --overwrite)')"
+	im_report="$im_report$(import_report_section ignorada "$im_ignored" ' (nome reservado/inválido ou múltiplos valores): ' '')"
+	im_report="$im_report$(import_report_section '' "$im_failed" ' com falha de gravação: ' '')"
+	printf '%s%s\n' "$im_prefix" "$im_report"
+
+	if [ "$im_bang" -eq 1 ]; then
+		echo "Nota: ao menos um alias importado tem valor começando por '!' — executa shell ao ser invocado. Importar de fonte não confiável equivale a executar comando arbitrário ao invocá-lo." >&2
+	fi
+
+	# exit 1 se alguma gravação falhou de verdade (ADR-0004); colisão pulada
+	# e entrada ignorada continuam sendo relatório, não falha.
+	[ -z "$im_failed" ]
+}
+
+# git alias --import <arquivo> ("-" = entrada padrão). Valida a fonte
+# (gitconfig legível e sintaticamente válido; stdin vai para um temporário,
+# removido ao final) e delega o merge a import_merge. Retorna 1 em fonte
+# ilegível/inválida ou sem arquivo versionado detectado; 0 caso contrário.
+alias_import() {
+	ai_src="$1"
+	ai_overwrite="$2"
+	ai_dryrun="$3"
+	ai_tmpsrc=''
+	ai_rc=0
+
+	if [ "$ai_src" = '-' ]; then
+		ai_tmpsrc="$(mktemp "${TMPDIR:-/tmp}/git-alias-import.XXXXXX")"
+		cat >"$ai_tmpsrc"
+		ai_src="$ai_tmpsrc"
+	fi
+
+	if [ ! -f "$ai_src" ] || [ ! -r "$ai_src" ]; then
+		echo "Erro: não consegui ler a fonte de import: $1" >&2
+		ai_rc=1
+	elif ! git config --file "$ai_src" --list >/dev/null 2>&1; then
+		echo "Erro: a fonte de import não é um gitconfig válido: $1" >&2
+		ai_rc=1
+	elif import_merge "$ai_src" "$ai_overwrite" "$ai_dryrun"; then
+		ai_rc=0
+	else
+		ai_rc=1
+	fi
+
+	[ -n "$ai_tmpsrc" ] && rm -f "$ai_tmpsrc"
+	return "$ai_rc"
+}
+
 # Reescreve <arquivo> ordenado e com o cabeçalho padrão. Idempotente;
 # chamado após cada gravação no arquivo de aliases versionado, para manter o
 # diff de commit mínimo.
@@ -268,6 +488,16 @@ alias_value_count() {
 	key="$1"
 	shift
 	git config "$@" --null --get-all "$key" 2>/dev/null | tr -cd '\0' | wc -c | tr -d '[:space:]'
+}
+
+# 0 se a chave <key> ($1) tem mais de um valor na fonte indicada pelo
+# restante dos argumentos ($2+ repassados a "git config", ex.: "--file <f>").
+# Açúcar sobre alias_value_count para o guard de multivalor (KI-1) não ficar
+# reescrito à mão em cada ponto de gravação do --import.
+alias_is_multivalued() {
+	aim_key="$1"
+	shift
+	[ "$(alias_value_count "$aim_key" "$@")" -gt 1 ]
 }
 
 # Caminho do arquivo de fallback XDG do config global
@@ -813,6 +1043,46 @@ main() {
 		fi
 		alias_export "${2:-}"
 		return 0
+		;;
+	--import)
+		shift
+		import_src=''
+		import_overwrite=0
+		import_dryrun=0
+		while [ "$#" -gt 0 ]; do
+			case "$1" in
+			--overwrite) import_overwrite=1 ;;
+			--dry-run) import_dryrun=1 ;;
+			-)
+				if [ -n "$import_src" ]; then
+					echo "Erro: uso: git alias --import <arquivo> [--overwrite] [--dry-run]" >&2
+					return 2
+				fi
+				import_src='-'
+				;;
+			-*)
+				echo "Erro: opção desconhecida para --import: $1" >&2
+				return 2
+				;;
+			*)
+				if [ -n "$import_src" ]; then
+					echo "Erro: uso: git alias --import <arquivo> [--overwrite] [--dry-run]" >&2
+					return 2
+				fi
+				import_src="$1"
+				;;
+			esac
+			shift
+		done
+		if [ -z "$import_src" ]; then
+			echo "Erro: uso: git alias --import <arquivo> [--overwrite] [--dry-run]" >&2
+			return 2
+		fi
+		if alias_import "$import_src" "$import_overwrite" "$import_dryrun"; then
+			return 0
+		else
+			return 1
+		fi
 		;;
 	--doctor)
 		if [ "$#" -ne 1 ]; then

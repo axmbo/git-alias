@@ -13,6 +13,22 @@ projeto estiver na série `0.y`, a superfície de comandos e o formato do
 
 ### Adicionado
 
+- `git alias --import <arquivo>` (`-` = entrada padrão): funde as entradas
+  `alias.*` de uma fonte gitconfig (tipicamente a saída de um `--export`) na
+  seção `[alias]` do arquivo de aliases versionado detectado, sem destruir o
+  que já está lá — o inverso não-destrutivo do `--export`. Colisão de valor:
+  pula e relata por padrão (`4 importados; 2 já existentes com valor
+  diferente: co, st (use --overwrite)`); `--overwrite` faz a fonte vencer;
+  valor idêntico dos dois lados é no-op silencioso. `--dry-run` imprime o
+  resumo sem gravar. Uma entrada com nome reservado (`help`), nome inválido,
+  ou múltiplos valores para a mesma chave (a condição que `--rename` recusa)
+  é ignorada com aviso, sem bloquear as demais; `alias.alias` é omitido,
+  como no `--export`. **Não** toca no `git config --global`; sem arquivo
+  versionado detectado é erro (exit 1), não fallback. Avisa (stderr) quando
+  algum alias importado tem valor começando por `!` — executa shell ao ser
+  invocado, e importar de fonte não confiável equivale a executar comando
+  arbitrário depois. Ver
+  [ADR-0004](docs/adr/0004-semantica-de-merge-do-import.md).
 - `git alias --doctor`: relatório read-only de diagnóstico da instalação (o
   inverso do `install.sh`) — confere se o arquivo de aliases versionado está
   no `include.path` e é detectável (com a resolução do caminho: absoluto,

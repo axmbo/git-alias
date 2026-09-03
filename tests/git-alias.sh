@@ -1795,6 +1795,644 @@ D_READONLY="$(
 check "--doctor é read-only: não toca no arquivo de aliases nem no ~/.gitconfig" \
 	"af=sim gc=sim" "$D_READONLY"
 
+# =========================================================================
+# git alias --import (F2): funde as entradas alias.* de uma fonte gitconfig
+# na seção [alias] do arquivo de aliases versionado detectado, sem destruir
+# o que já está lá (o inverso não-destrutivo do --export). Cada teste roda
+# num HOME/GIT_CONFIG_GLOBAL isolado, mesmo idioma dos testes de --doctor.
+# =========================================================================
+
+# --- funde aliases novos, preservando os que já existem ------------------
+I_BASIC="$(
+	IH="$SB/import-basic"
+	mkdir -p "$IH"
+	HOME="$IH"
+	GIT_CONFIG_GLOBAL="$IH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$IH"
+	AFI="$IH/aliases.gitconfig"
+	printf '%s\n' \
+		'# Gerado por: git alias --export' \
+		'# Nao edite a mao; rode o comando novamente para atualizar.' \
+		'# Formato: 1' \
+		'' \
+		'[alias]' \
+		'	zz = !echo zz' >"$AFI"
+	git config --global --add include.path "$AFI"
+	SRC="$IH/fonte.gitconfig"
+	printf '%s\n' '[alias]' '	co = checkout' '	ci = commit' >"$SRC"
+	st=0
+	out="$("$SCRIPT" --import "$SRC" 2>/dev/null)" || st=$?
+	printf 'exit=%s\n' "$st"
+	printf 'nomes=%s\n' "$(git config --file "$AFI" --name-only --get-regexp '^alias\.' | sed 's/^alias\.//' | LC_ALL=C sort | paste -sd' ' -)"
+	printf 'hdr=%s\n' "$(head -n1 "$AFI")"
+	printf 'zzval=%s\n' "$(git config --file "$AFI" --get alias.zz)"
+	printf 'coval=%s\n' "$(git config --file "$AFI" --get alias.co)"
+	printf 'report=%s\n' "$out"
+)"
+check "--import: aliases novos entram no arquivo versionado, ordenados, junto dos que já havia" \
+	"nomes=ci co zz" "$(printf '%s\n' "$I_BASIC" | grep '^nomes=')"
+check "--import: exit 0" \
+	"exit=0" "$(printf '%s\n' "$I_BASIC" | grep '^exit=')"
+check "--import: cabeçalho do arquivo preservado" \
+	"hdr=# Gerado por: git alias --export" "$(printf '%s\n' "$I_BASIC" | grep '^hdr=')"
+check "--import: alias pré-existente não é tocado" \
+	"zzval=!echo zz" "$(printf '%s\n' "$I_BASIC" | grep '^zzval=')"
+check "--import: valor do alias importado bate com a fonte" \
+	"coval=checkout" "$(printf '%s\n' "$I_BASIC" | grep '^coval=')"
+check "--import: relatório em stdout conta os importados" \
+	"report=2 importados" "$(printf '%s\n' "$I_BASIC" | grep '^report=')"
+
+# --- colisão de valor: pula e relata; sem --overwrite não sobrescreve -----
+I_COLLIDE="$(
+	IH="$SB/import-collide"
+	mkdir -p "$IH"
+	HOME="$IH"
+	GIT_CONFIG_GLOBAL="$IH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$IH"
+	AFI="$IH/aliases.gitconfig"
+	printf '%s\n' \
+		'# Gerado por: git alias --export' \
+		'# Nao edite a mao; rode o comando novamente para atualizar.' \
+		'# Formato: 1' \
+		'' \
+		'[alias]' \
+		'	co = checkout' \
+		'	st = status' >"$AFI"
+	git config --global --add include.path "$AFI"
+	SRC="$IH/fonte.gitconfig"
+	printf '%s\n' '[alias]' '	co = checkout -q' '	st = status' '	ci = commit' >"$SRC"
+	st=0
+	out="$("$SCRIPT" --import "$SRC" 2>/dev/null)" || st=$?
+	printf 'exit=%s\n' "$st"
+	printf 'coval=%s\n' "$(git config --file "$AFI" --get alias.co)"
+	printf 'cival=%s\n' "$(git config --file "$AFI" --get alias.ci)"
+	printf 'report=%s\n' "$out"
+)"
+check "--import: colisão de valor sem --overwrite não sobrescreve o alias do arquivo" \
+	"coval=checkout" "$(printf '%s\n' "$I_COLLIDE" | grep '^coval=')"
+check "--import: aliases novos entram mesmo havendo colisão em outro nome" \
+	"cival=commit" "$(printf '%s\n' "$I_COLLIDE" | grep '^cival=')"
+check "--import: relatório lista os importados e a colisão pulada" \
+	"report=1 importado; 1 já existente com valor diferente: co (use --overwrite)" \
+	"$(printf '%s\n' "$I_COLLIDE" | grep '^report=')"
+check "--import: colisão pulada não é falha (exit 0)" \
+	"exit=0" "$(printf '%s\n' "$I_COLLIDE" | grep '^exit=')"
+
+# --- valor idêntico dos dois lados: no-op silencioso, arquivo intacto ----
+I_NOOP="$(
+	IH="$SB/import-noop"
+	mkdir -p "$IH"
+	HOME="$IH"
+	GIT_CONFIG_GLOBAL="$IH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$IH"
+	AFI="$IH/aliases.gitconfig"
+	printf '%s\n' \
+		'# Gerado por: git alias --export' \
+		'# Nao edite a mao; rode o comando novamente para atualizar.' \
+		'# Formato: 1' \
+		'' \
+		'[alias]' \
+		'	co = checkout' >"$AFI"
+	git config --global --add include.path "$AFI"
+	SRC="$IH/fonte.gitconfig"
+	printf '%s\n' '[alias]' '	co = checkout' >"$SRC"
+	before="$(cat "$AFI")"
+	st=0
+	out="$("$SCRIPT" --import "$SRC" 2>/dev/null)" || st=$?
+	printf 'exit=%s\n' "$st"
+	printf 'igual=%s\n' "$([ "$before" = "$(cat "$AFI")" ] && echo sim || echo nao)"
+	printf 'report=%s\n' "$out"
+)"
+check "--import: valor idêntico não reescreve o arquivo (no-op)" \
+	"igual=sim" "$(printf '%s\n' "$I_NOOP" | grep '^igual=')"
+check "--import: nada a importar (só valor idêntico): relatório '0 importados'" \
+	"report=0 importados" "$(printf '%s\n' "$I_NOOP" | grep '^report=')"
+check "--import: no-op silencioso — exit 0" \
+	"exit=0" "$(printf '%s\n' "$I_NOOP" | grep '^exit=')"
+
+# --- --overwrite: na colisão de valor, a fonte vence --------------------
+I_OVER="$(
+	IH="$SB/import-over"
+	mkdir -p "$IH"
+	HOME="$IH"
+	GIT_CONFIG_GLOBAL="$IH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$IH"
+	AFI="$IH/aliases.gitconfig"
+	printf '%s\n' \
+		'# Gerado por: git alias --export' \
+		'# Nao edite a mao; rode o comando novamente para atualizar.' \
+		'# Formato: 1' \
+		'' \
+		'[alias]' \
+		'	co = checkout' \
+		'	st = status' >"$AFI"
+	git config --global --add include.path "$AFI"
+	SRC="$IH/fonte.gitconfig"
+	printf '%s\n' '[alias]' '	co = checkout -q' '	st = status' '	br = branch' >"$SRC"
+	st=0
+	out="$("$SCRIPT" --import --overwrite "$SRC" 2>/dev/null)" || st=$?
+	printf 'exit=%s\n' "$st"
+	printf 'coval=%s\n' "$(git config --file "$AFI" --get alias.co)"
+	printf 'brval=%s\n' "$(git config --file "$AFI" --get alias.br)"
+	printf 'report=%s\n' "$out"
+)"
+check "--import --overwrite: colisão de valor grava o valor da fonte" \
+	"coval=checkout -q" "$(printf '%s\n' "$I_OVER" | grep '^coval=')"
+check "--import --overwrite: aliases novos continuam entrando" \
+	"brval=branch" "$(printf '%s\n' "$I_OVER" | grep '^brval=')"
+check "--import --overwrite: relatório separa importados de sobrescritos" \
+	"report=1 importado; 1 sobrescrito" "$(printf '%s\n' "$I_OVER" | grep '^report=')"
+check "--import --overwrite: exit 0" \
+	"exit=0" "$(printf '%s\n' "$I_OVER" | grep '^exit=')"
+
+# a flag também vale depois do <arquivo>
+I_OVER2="$(
+	IH="$SB/import-over2"
+	mkdir -p "$IH"
+	HOME="$IH"
+	GIT_CONFIG_GLOBAL="$IH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$IH"
+	AFI="$IH/aliases.gitconfig"
+	printf '%s\n' '# Gerado por: git alias --export' '# x' '# Formato: 1' '' \
+		'[alias]' '	co = checkout' >"$AFI"
+	git config --global --add include.path "$AFI"
+	SRC="$IH/fonte.gitconfig"
+	printf '%s\n' '[alias]' '	co = switch' >"$SRC"
+	"$SCRIPT" --import "$SRC" --dry-run >/dev/null 2>&1 || true
+	"$SCRIPT" --import "$SRC" --overwrite >/dev/null 2>&1 || true
+	printf 'coval=%s\n' "$(git config --file "$AFI" --get alias.co)"
+)"
+check "--import: --overwrite/--dry-run também são aceitos depois do <arquivo>" \
+	"coval=switch" "$(printf '%s\n' "$I_OVER2" | grep '^coval=')"
+
+# --- --dry-run: mostra o resumo, não grava nada ------------------------
+I_DRY="$(
+	IH="$SB/import-dry"
+	mkdir -p "$IH"
+	HOME="$IH"
+	GIT_CONFIG_GLOBAL="$IH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$IH"
+	AFI="$IH/aliases.gitconfig"
+	printf '%s\n' \
+		'# Gerado por: git alias --export' \
+		'# Nao edite a mao; rode o comando novamente para atualizar.' \
+		'# Formato: 1' \
+		'' \
+		'[alias]' \
+		'	co = checkout' >"$AFI"
+	git config --global --add include.path "$AFI"
+	SRC="$IH/fonte.gitconfig"
+	printf '%s\n' '[alias]' '	co = checkout -q' '	ci = commit' '	br = branch' >"$SRC"
+	before_af="$(cat "$AFI")"
+	before_gc="$(cat "$IH/.gitconfig")"
+	st=0
+	out="$("$SCRIPT" --import "$SRC" --dry-run 2>/dev/null)" || st=$?
+	printf 'exit=%s\n' "$st"
+	printf 'af_igual=%s\n' "$([ "$before_af" = "$(cat "$AFI")" ] && echo sim || echo nao)"
+	printf 'gc_igual=%s\n' "$([ "$before_gc" = "$(cat "$IH/.gitconfig")" ] && echo sim || echo nao)"
+	printf 'ci_ausente=%s\n' "$(git config --file "$AFI" --get alias.ci >/dev/null 2>&1 && echo nao || echo sim)"
+	printf 'report=%s\n' "$out"
+)"
+check "--import --dry-run: não altera o arquivo de aliases" \
+	"af_igual=sim" "$(printf '%s\n' "$I_DRY" | grep '^af_igual=')"
+check "--import --dry-run: não altera o ~/.gitconfig" \
+	"gc_igual=sim" "$(printf '%s\n' "$I_DRY" | grep '^gc_igual=')"
+check "--import --dry-run: alias que entraria não foi gravado" \
+	"ci_ausente=sim" "$(printf '%s\n' "$I_DRY" | grep '^ci_ausente=')"
+check "--import --dry-run: relatório prefixado com [dry-run]" \
+	"report=[dry-run] 2 importados; 1 já existente com valor diferente: co (use --overwrite)" \
+	"$(printf '%s\n' "$I_DRY" | grep '^report=')"
+check "--import --dry-run: exit 0" \
+	"exit=0" "$(printf '%s\n' "$I_DRY" | grep '^exit=')"
+
+# --- "-" lê o gitconfig da entrada padrão ------------------------------
+I_STDIN="$(
+	IH="$SB/import-stdin"
+	mkdir -p "$IH"
+	HOME="$IH"
+	GIT_CONFIG_GLOBAL="$IH/.gitconfig"
+	TMPDIR="$IH"
+	export HOME GIT_CONFIG_GLOBAL TMPDIR
+	cd "$IH"
+	AFI="$IH/aliases.gitconfig"
+	printf '%s\n' \
+		'# Gerado por: git alias --export' \
+		'# Nao edite a mao; rode o comando novamente para atualizar.' \
+		'# Formato: 1' \
+		'' \
+		'[alias]' \
+		'	zz = !echo zz' >"$AFI"
+	git config --global --add include.path "$AFI"
+	st=0
+	out="$(printf '[alias]\n\tco = checkout\n\tci = commit\n' | "$SCRIPT" --import - 2>/dev/null)" || st=$?
+	printf 'exit=%s\n' "$st"
+	printf 'nomes=%s\n' "$(git config --file "$AFI" --name-only --get-regexp '^alias\.' | sed 's/^alias\.//' | LC_ALL=C sort | paste -sd' ' -)"
+	printf 'report=%s\n' "$out"
+	printf 'temp_sobrou=%s\n' "$(find "$IH" -name 'git-alias-import.*' 2>/dev/null | grep -c . || true)"
+)"
+check "--import -: lê da entrada padrão e funde no arquivo versionado" \
+	"nomes=ci co zz" "$(printf '%s\n' "$I_STDIN" | grep '^nomes=')"
+check "--import -: relatório normal" \
+	"report=2 importados" "$(printf '%s\n' "$I_STDIN" | grep '^report=')"
+check "--import -: exit 0" \
+	"exit=0" "$(printf '%s\n' "$I_STDIN" | grep '^exit=')"
+check "--import -: não deixa o temporário da stdin para trás" \
+	"temp_sobrou=0" "$(printf '%s\n' "$I_STDIN" | grep '^temp_sobrou=')"
+
+# --- alias.alias omitido; entrada reservada/inválida/multivalor ignorada -
+I_SKIP="$(
+	IH="$SB/import-skip"
+	mkdir -p "$IH"
+	HOME="$IH"
+	GIT_CONFIG_GLOBAL="$IH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$IH"
+	AFI="$IH/aliases.gitconfig"
+	printf '%s\n' \
+		'# Gerado por: git alias --export' \
+		'# Nao edite a mao; rode o comando novamente para atualizar.' \
+		'# Formato: 1' \
+		'' \
+		'[alias]' >"$AFI"
+	git config --global --add include.path "$AFI"
+	SRC="$IH/fonte.gitconfig"
+	printf '%s\n' \
+		'[alias]' \
+		'	co = checkout' \
+		'	alias = !git-alias' \
+		'	help = mostra-ajuda' \
+		'	ci = commit' \
+		'	dup = um' \
+		'	dup = dois' \
+		'[alias "sub"]' \
+		'	foo = bar' >"$SRC"
+	st=0
+	out="$("$SCRIPT" --import "$SRC" 2>/dev/null)" || st=$?
+	printf 'exit=%s\n' "$st"
+	printf 'nomes=%s\n' "$(git config --file "$AFI" --name-only --get-regexp '^alias\.' | sed 's/^alias\.//' | LC_ALL=C sort | paste -sd' ' -)"
+	printf 'alias_ausente=%s\n' "$(git config --file "$AFI" --get alias.alias >/dev/null 2>&1 && echo nao || echo sim)"
+	printf 'help_ausente=%s\n' "$(git config --file "$AFI" --get alias.help >/dev/null 2>&1 && echo nao || echo sim)"
+	printf 'report=%s\n' "$out"
+)"
+check "--import: só os nomes válidos entram (alias.alias omitido, reservado/inválido/multivalor pulados)" \
+	"nomes=ci co" "$(printf '%s\n' "$I_SKIP" | grep '^nomes=')"
+check "--import: alias.alias da fonte não é gravado (como no --export)" \
+	"alias_ausente=sim" "$(printf '%s\n' "$I_SKIP" | grep '^alias_ausente=')"
+check "--import: nome reservado 'help' da fonte não é gravado" \
+	"help_ausente=sim" "$(printf '%s\n' "$I_SKIP" | grep '^help_ausente=')"
+check "--import: relatório conta importados e ignorados (alias.alias fora da conta)" \
+	"report=2 importados; 3 ignoradas (nome reservado/inválido ou múltiplos valores): dup, help, sub.foo" \
+	"$(printf '%s\n' "$I_SKIP" | grep '^report=')"
+check "--import: entrada problemática não bloqueia as boas (exit 0)" \
+	"exit=0" "$(printf '%s\n' "$I_SKIP" | grep '^exit=')"
+
+# --- sem arquivo de aliases versionado detectado: erro, sem fallback ----
+I_NOFILE="$(
+	IH="$SB/import-nofile"
+	mkdir -p "$IH"
+	HOME="$IH"
+	GIT_CONFIG_GLOBAL="$IH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$IH"
+	git config --global user.email t@t
+	git config --global user.name t
+	SRC="$IH/fonte.gitconfig"
+	printf '%s\n' '[alias]' '	co = checkout' >"$SRC"
+	before_gc="$(cat "$IH/.gitconfig")"
+	st=0
+	err="$("$SCRIPT" --import "$SRC" 2>&1 >/dev/null)" || st=$?
+	printf 'exit=%s\n' "$st"
+	printf 'gc_igual=%s\n' "$([ "$before_gc" = "$(cat "$IH/.gitconfig")" ] && echo sim || echo nao)"
+	printf 'co_no_global=%s\n' "$(git config --global --get alias.co >/dev/null 2>&1 && echo sim || echo nao)"
+	printf 'orienta=%s\n' "$(printf '%s' "$err" | grep -qi 'install.sh\|--export' && echo sim || echo nao)"
+)"
+check "--import sem arquivo versionado detectado: exit 1" \
+	"exit=1" "$(printf '%s\n' "$I_NOFILE" | grep '^exit=')"
+check "--import sem arquivo versionado: NÃO cai no git config --global" \
+	"co_no_global=nao" "$(printf '%s\n' "$I_NOFILE" | grep '^co_no_global=')"
+check "--import sem arquivo versionado: ~/.gitconfig intacto" \
+	"gc_igual=sim" "$(printf '%s\n' "$I_NOFILE" | grep '^gc_igual=')"
+check "--import sem arquivo versionado: mensagem orienta install.sh / --export" \
+	"orienta=sim" "$(printf '%s\n' "$I_NOFILE" | grep '^orienta=')"
+
+# --- fonte inexistente / inválida / válida mas sem [alias] -------------
+I_SRCERR="$(
+	IH="$SB/import-srcerr"
+	mkdir -p "$IH"
+	HOME="$IH"
+	GIT_CONFIG_GLOBAL="$IH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$IH"
+	AFI="$IH/aliases.gitconfig"
+	printf '%s\n' \
+		'# Gerado por: git alias --export' \
+		'# Nao edite a mao; rode o comando novamente para atualizar.' \
+		'# Formato: 1' \
+		'' \
+		'[alias]' \
+		'	zz = !echo zz' >"$AFI"
+	git config --global --add include.path "$AFI"
+	before_af="$(cat "$AFI")"
+
+	st1=0
+	"$SCRIPT" --import "$IH/nao-existe.gitconfig" >/dev/null 2>&1 || st1=$?
+
+	BAD="$IH/bad.gitconfig"
+	printf '%s\n' 'isto nao e um gitconfig valido' '= = =' >"$BAD"
+	st2=0
+	"$SCRIPT" --import "$BAD" >/dev/null 2>&1 || st2=$?
+
+	EMPTY="$IH/semalias.gitconfig"
+	printf '%s\n' '[core]' '	pager = less' >"$EMPTY"
+	st3=0
+	out3="$("$SCRIPT" --import "$EMPTY" 2>/dev/null)" || st3=$?
+
+	printf 'inexistente=%s\n' "$st1"
+	printf 'invalida=%s\n' "$st2"
+	printf 'semalias_exit=%s\n' "$st3"
+	printf 'semalias_report=%s\n' "$out3"
+	printf 'af_igual=%s\n' "$([ "$before_af" = "$(cat "$AFI")" ] && echo sim || echo nao)"
+)"
+check "--import de fonte inexistente: exit 1" \
+	"inexistente=1" "$(printf '%s\n' "$I_SRCERR" | grep '^inexistente=')"
+check "--import de fonte com sintaxe gitconfig inválida: exit 1" \
+	"invalida=1" "$(printf '%s\n' "$I_SRCERR" | grep '^invalida=')"
+check "--import de fonte válida mas sem [alias]: exit 0" \
+	"semalias_exit=0" "$(printf '%s\n' "$I_SRCERR" | grep '^semalias_exit=')"
+check "--import de fonte sem [alias]: relatório diz que não há nada a importar" \
+	"semalias_report=nenhum alias na fonte; nada a importar." \
+	"$(printf '%s\n' "$I_SRCERR" | grep '^semalias_report=')"
+check "--import: fonte problemática/vazia não altera o arquivo versionado" \
+	"af_igual=sim" "$(printf '%s\n' "$I_SRCERR" | grep '^af_igual=')"
+
+# --- nota de segurança: só quando algo com "!" foi de fato importado ----
+I_BANG="$(
+	IH="$SB/import-bang"
+	mkdir -p "$IH"
+	HOME="$IH"
+	GIT_CONFIG_GLOBAL="$IH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$IH"
+	AFI="$IH/aliases.gitconfig"
+	printf '%s\n' \
+		'# Gerado por: git alias --export' \
+		'# Nao edite a mao; rode o comando novamente para atualizar.' \
+		'# Formato: 1' \
+		'' \
+		'[alias]' \
+		'	danger = !echo ja-existia' >"$AFI"
+	git config --global --add include.path "$AFI"
+
+	# (a) importa um alias com "!" -> nota aparece
+	S1="$IH/s1.gitconfig"
+	printf '%s\n' '[alias]' '	gone = !git branch -D' >"$S1"
+	e1="$("$SCRIPT" --import "$S1" 2>&1 >/dev/null)" || true
+	printf 'a_tem_nota=%s\n' "$(printf '%s' "$e1" | grep -qi "shell\|arbitrário" && echo sim || echo nao)"
+
+	# (b) nada com "!" -> sem nota
+	S2="$IH/s2.gitconfig"
+	printf '%s\n' '[alias]' '	co = checkout' >"$S2"
+	e2="$("$SCRIPT" --import "$S2" 2>&1 >/dev/null)" || true
+	printf 'b_sem_nota=%s\n' "$(printf '%s' "$e2" | grep -qi "shell\|arbitrário" && echo nao || echo sim)"
+
+	# (c) "!" só numa colisão pulada (não importada) -> sem nota
+	S3="$IH/s3.gitconfig"
+	printf '%s\n' '[alias]' '	danger = !rm -rf /' >"$S3"
+	e3="$("$SCRIPT" --import "$S3" 2>&1 >/dev/null)" || true
+	printf 'c_sem_nota=%s\n' "$(printf '%s' "$e3" | grep -qi "shell\|arbitrário" && echo nao || echo sim)"
+)"
+check "--import: alias com '!' importado dispara a nota de segurança (stderr)" \
+	"a_tem_nota=sim" "$(printf '%s\n' "$I_BANG" | grep '^a_tem_nota=')"
+check "--import: sem nenhum '!' importado, não imprime a nota" \
+	"b_sem_nota=sim" "$(printf '%s\n' "$I_BANG" | grep '^b_sem_nota=')"
+check "--import: '!' só numa colisão pulada não dispara a nota (nada foi importado)" \
+	"c_sem_nota=sim" "$(printf '%s\n' "$I_BANG" | grep '^c_sem_nota=')"
+
+# --- erros de uso do --import: exit 2 ---------------------------------
+st=0
+out="$("$SCRIPT" --import 2>&1)" || st=$?
+check "--import sem <arquivo>: erro de uso" \
+	"Erro: uso: git alias --import <arquivo> [--overwrite] [--dry-run]" "$out"
+check "--import sem <arquivo>: exit 2" "2" "$st"
+
+st=0
+out="$("$SCRIPT" --import --overwrite 2>&1)" || st=$?
+check "--import só com flag, sem <arquivo>: exit 2" "2" "$st"
+
+st=0
+out="$("$SCRIPT" --import --bogus "$SB/x" 2>&1)" || st=$?
+check "--import com opção desconhecida: mensagem" \
+	"Erro: opção desconhecida para --import: --bogus" "$out"
+check "--import com opção desconhecida: exit 2" "2" "$st"
+
+st=0
+out="$("$SCRIPT" --import a b 2>&1)" || st=$?
+check "--import com dois <arquivo>: erro de uso" \
+	"Erro: uso: git alias --import <arquivo> [--overwrite] [--dry-run]" "$out"
+check "--import com dois <arquivo>: exit 2" "2" "$st"
+
+# --- valor multilinha da fonte é importado exato ----------------------
+I_ML="$(
+	IH="$SB/import-ml"
+	mkdir -p "$IH"
+	HOME="$IH"
+	GIT_CONFIG_GLOBAL="$IH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$IH"
+	AFI="$IH/aliases.gitconfig"
+	printf '%s\n' \
+		'# Gerado por: git alias --export' \
+		'# Nao edite a mao; rode o comando novamente para atualizar.' \
+		'# Formato: 1' \
+		'' \
+		'[alias]' >"$AFI"
+	git config --global --add include.path "$AFI"
+	SRC="$IH/fonte.gitconfig"
+	git config --file "$SRC" alias.func "$(printf '!f() {\n  git push\n}\nf')"
+	git config --file "$SRC" alias.co checkout
+	st=0
+	out="$("$SCRIPT" --import "$SRC" 2>/dev/null)" || st=$?
+	printf 'exit=%s\n' "$st"
+	printf 'report=%s\n' "$out"
+	printf 'nomes=%s\n' "$(git config --file "$AFI" --name-only --get-regexp '^alias\.' | sed 's/^alias\.//' | LC_ALL=C sort | paste -sd' ' -)"
+	printf 'match=%s\n' "$([ "$(git config --file "$AFI" --get alias.func)" = "$(printf '!f() {\n  git push\n}\nf')" ] && echo sim || echo nao)"
+)"
+check "--import: valor multilinha da fonte gravado exato no arquivo" \
+	"match=sim" "$(printf '%s\n' "$I_ML" | grep '^match=')"
+check "--import: valor multilinha não gera alias espúrio a partir do corpo" \
+	"nomes=co func" "$(printf '%s\n' "$I_ML" | grep '^nomes=')"
+check "--import: valor multilinha — relatório e exit normais" \
+	"exit=0 report=2 importados" \
+	"$(printf '%s\n' "$I_ML" | grep -E '^(exit|report)=' | paste -sd' ' -)"
+
+# --- escrita que falha de verdade: não conta como importada, sai 1 -------
+# git fake que falha só o "set" de alias.* no arquivo de aliases (lock,
+# permissão, disco), deixando toda leitura e o resto funcionarem.
+I_WRITEFAIL="$(
+	IH="$SB/import-writefail"
+	mkdir -p "$IH/fakebin"
+	HOME="$IH"
+	GIT_CONFIG_GLOBAL="$IH/.gitconfig"
+	GIT_CONFIG_SYSTEM=/dev/null
+	GIT_CEILING_DIRECTORIES="$IH"
+	export HOME GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM GIT_CEILING_DIRECTORIES
+	cd "$IH"
+	AFI="$IH/aliases.gitconfig"
+	printf '%s\n' \
+		'# Gerado por: git alias --export' \
+		'# Nao edite a mao; rode o comando novamente para atualizar.' \
+		'# Formato: 1' \
+		'' \
+		'[alias]' \
+		'	zz = !echo zz' >"$AFI"
+	git config --global user.email t@t
+	git config --global user.name t
+	git config --global --add include.path "$AFI"
+	REALGIT="$(command -v git)"
+	cat >"$IH/fakebin/git" <<FAKEGIT
+#!/bin/sh
+# Falha só a gravação de um valor de alias.* no arquivo de aliases (config
+# --file <AFI> alias.<x> <valor>); leitura (--get, --get-regexp, --get-all)
+# e --unset-all seguem normais.
+if [ "\$1" = config ] && [ "\$2" = --file ] && [ "\$3" = "$AFI" ] && [ -n "\$5" ]; then
+	case "\$4" in
+	alias.*) echo "fake: gravação recusada" >&2; exit 1 ;;
+	esac
+fi
+exec "$REALGIT" "\$@"
+FAKEGIT
+	chmod +x "$IH/fakebin/git"
+	SRC="$IH/fonte.gitconfig"
+	printf '%s\n' '[alias]' '	co = checkout' '	ci = commit' >"$SRC"
+	st=0
+	out="$(PATH="$IH/fakebin:$PATH" "$SCRIPT" --import "$SRC" 2>/dev/null)" || st=$?
+	printf 'exit=%s\n' "$st"
+	printf 'co_ausente=%s\n' "$(git config --file "$AFI" --get alias.co >/dev/null 2>&1 && echo nao || echo sim)"
+	printf 'importados0=%s\n' "$(printf '%s' "$out" | grep -q '^0 importados' && echo sim || echo nao)"
+	printf 'cita_falha=%s\n' "$(printf '%s' "$out" | grep -qi 'falha' && echo sim || echo nao)"
+)"
+check "--import: escrita que falha de verdade não persiste o alias" \
+	"co_ausente=sim" "$(printf '%s\n' "$I_WRITEFAIL" | grep '^co_ausente=')"
+check "--import: escrita que falha não é contada como importada" \
+	"importados0=sim" "$(printf '%s\n' "$I_WRITEFAIL" | grep '^importados0=')"
+check "--import: relatório sinaliza a falha de gravação" \
+	"cita_falha=sim" "$(printf '%s\n' "$I_WRITEFAIL" | grep '^cita_falha=')"
+check "--import: falha genuína de escrita — exit 1" \
+	"exit=1" "$(printf '%s\n' "$I_WRITEFAIL" | grep '^exit=')"
+
+# --- multivalor no DESTINO: ignora o nome, simétrico ao guard da fonte ---
+I_DESTMULTI="$(
+	IH="$SB/import-destmulti"
+	mkdir -p "$IH"
+	HOME="$IH"
+	GIT_CONFIG_GLOBAL="$IH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$IH"
+	AFI="$IH/aliases.gitconfig"
+	# arquivo versionado editado à mão: alias.co com dois valores
+	printf '%s\n' \
+		'# Gerado por: git alias --export' \
+		'# Nao edite a mao; rode o comando novamente para atualizar.' \
+		'# Formato: 1' \
+		'' \
+		'[alias]' \
+		'	co = checkout' \
+		'	co = switch' >"$AFI"
+	git config --global --add include.path "$AFI"
+	SRC="$IH/fonte.gitconfig"
+	printf '%s\n' '[alias]' '	co = log --oneline' '	ci = commit' >"$SRC"
+	st=0
+	out="$("$SCRIPT" --import "$SRC" 2>/dev/null)" || st=$?
+	printf 'exit=%s\n' "$st"
+	printf 'report=%s\n' "$out"
+	printf 'ci_ok=%s\n' "$(git config --file "$AFI" --get alias.ci)"
+	printf 'co_nao_e_fonte=%s\n' "$([ "$(git config --file "$AFI" --get alias.co 2>/dev/null)" != "log --oneline" ] && echo sim || echo nao)"
+)"
+check "--import: nome multivalorado no arquivo versionado entra em 'ignoradas'" \
+	"report=1 importado; 1 ignorada (nome reservado/inválido ou múltiplos valores): co" \
+	"$(printf '%s\n' "$I_DESTMULTI" | grep '^report=')"
+check "--import: multivalor no destino não é falha de gravação (exit 0)" \
+	"exit=0" "$(printf '%s\n' "$I_DESTMULTI" | grep '^exit=')"
+check "--import: os outros nomes entram normalmente apesar do multivalor no destino" \
+	"ci_ok=commit" "$(printf '%s\n' "$I_DESTMULTI" | grep '^ci_ok=')"
+check "--import: multivalor no destino — a fonte não sobrescreve esse nome" \
+	"co_nao_e_fonte=sim" "$(printf '%s\n' "$I_DESTMULTI" | grep '^co_nao_e_fonte=')"
+
+# --- fonte com nome de subseção: espaço não é word-split, "*" não é glob --
+I_SUBSEC="$(
+	IH="$SB/import-subsec"
+	mkdir -p "$IH"
+	HOME="$IH"
+	GIT_CONFIG_GLOBAL="$IH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$IH"
+	AFI="$IH/aliases.gitconfig"
+	printf '%s\n' \
+		'# Gerado por: git alias --export' \
+		'# Nao edite a mao; rode o comando novamente para atualizar.' \
+		'# Formato: 1' \
+		'' \
+		'[alias]' >"$AFI"
+	git config --global --add include.path "$AFI"
+	SRC="$IH/fonte.gitconfig"
+	printf '%s\n' \
+		'[alias]' \
+		'	co = checkout' \
+		'[alias "a b"]' \
+		'	foo = bar' \
+		'[alias "*"]' \
+		'	g = h' >"$SRC"
+	# isca: se "*.g" sofrer glob no CWD do relatório, casaria este arquivo
+	: >"$IH/zzz.g"
+	st=0
+	out="$("$SCRIPT" --import "$SRC" 2>/dev/null)" || st=$?
+	printf 'exit=%s\n' "$st"
+	printf 'report=%s\n' "$out"
+	printf 'a_ausente=%s\n' "$(git config --file "$AFI" --get alias.a >/dev/null 2>&1 && echo nao || echo sim)"
+	printf 'co_ok=%s\n' "$(git config --file "$AFI" --get alias.co)"
+)"
+check "--import: nome de subseção com espaço/'*' é listado literal e inteiro em 'ignoradas'" \
+	"report=1 importado; 2 ignoradas (nome reservado/inválido ou múltiplos valores): *.g, a b.foo" \
+	"$(printf '%s\n' "$I_SUBSEC" | grep '^report=')"
+check "--import: word-split de 'a b.foo' não cria um alias 'a'" \
+	"a_ausente=sim" "$(printf '%s\n' "$I_SUBSEC" | grep '^a_ausente=')"
+check "--import: apesar das subseções, o alias válido entra normalmente" \
+	"co_ok=checkout" "$(printf '%s\n' "$I_SUBSEC" | grep '^co_ok=')"
+check "--import: subseções na fonte não são falha (exit 0)" \
+	"exit=0" "$(printf '%s\n' "$I_SUBSEC" | grep '^exit=')"
+
+# --- --dry-run não mascara as pré-condições que valem 1 nos dois modos ---
+I_DRYPRE="$(
+	IH="$SB/import-drypre"
+	mkdir -p "$IH"
+	HOME="$IH"
+	GIT_CONFIG_GLOBAL="$IH/.gitconfig"
+	export HOME GIT_CONFIG_GLOBAL
+	cd "$IH"
+	git config --global user.email t@t
+	git config --global user.name t
+	SRC="$IH/fonte.gitconfig"
+	printf '%s\n' '[alias]' '	co = checkout' >"$SRC"
+	# (a) sem arquivo versionado detectado
+	st1=0
+	"$SCRIPT" --import "$SRC" --dry-run >/dev/null 2>&1 || st1=$?
+	# (b) fonte inexistente
+	st2=0
+	"$SCRIPT" --import "$IH/nao-existe" --dry-run >/dev/null 2>&1 || st2=$?
+	printf 'sem_arquivo=%s\n' "$st1"
+	printf 'fonte_inexistente=%s\n' "$st2"
+)"
+check "--import --dry-run sem arquivo versionado: exit 1 (igual ao modo real)" \
+	"sem_arquivo=1" "$(printf '%s\n' "$I_DRYPRE" | grep '^sem_arquivo=')"
+check "--import --dry-run de fonte inexistente: exit 1 (igual ao modo real)" \
+	"fonte_inexistente=1" "$(printf '%s\n' "$I_DRYPRE" | grep '^fonte_inexistente=')"
+
 echo
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]

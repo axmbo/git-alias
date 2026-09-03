@@ -76,6 +76,8 @@ git alias --list [--file] [--origin|-o]
                                  de onde cada um vem
 git alias --export [<arquivo>]   Exporta em formato gitconfig; sem
                                  <arquivo>, escreve na saída padrão
+git alias --import <arquivo>     Funde os aliases de <arquivo> (- = stdin) no
+                                 arquivo versionado; [--overwrite] [--dry-run]
 git alias <nome>                 Mostra a definição de um alias
 git alias <nome> '<cmd>'         Cria ou atualiza um alias
 git alias --unset <nome>         Remove um alias
@@ -87,7 +89,8 @@ git alias --doctor               Diagnóstico read-only da instalação
 `git alias <nome> '<cmd>'` e `git alias --unset <nome>` gravam no arquivo de
 aliases incluído no seu `~/.gitconfig` (ver
 [versionamento](#versionamento-dos-aliases)); sem esse arquivo, caem no
-`git config --global` e avisam.
+`git config --global` e avisam. `git alias --import <arquivo>` também grava
+nesse arquivo — mas, sem ele detectado, é erro, não fallback.
 
 ### `--list`: filtros e origem
 
@@ -184,6 +187,58 @@ ordenado. Útil na primeira migração ou para consolidar aliases criados antes
 desta mudança. O dispatcher `alias.alias` é omitido de propósito (senão faria
 sombra no script). Rodar `--export` de outra máquina com aliases diferentes
 sobrescreve o arquivo — trate o commit como o estado canônico.
+
+### `--import`: trazer aliases de fora sem sobrescrever
+
+```sh
+git alias --import <arquivo>          # - lê da entrada padrão
+git alias --import <arquivo> --overwrite
+git alias --import <arquivo> --dry-run
+```
+
+Lê as entradas `alias.*` de `<arquivo>` (um gitconfig com seção `[alias]` —
+tipicamente a saída de um `--export`) e as **funde** na seção `[alias]` do
+arquivo de aliases versionado detectado, renormalizando ao final. É o inverso
+do `--export`, e ao contrário dele **não destrói** o que já está no arquivo:
+só acrescenta o que falta. `<arquivo>` = `-` lê da entrada padrão.
+
+Por entrada da fonte, comparada com o arquivo:
+
+| Estado no arquivo | Sem `--overwrite` | Com `--overwrite` |
+| --- | --- | --- |
+| ausente | grava (importado) | grava (importado) |
+| mesmo valor | no-op silencioso | no-op silencioso |
+| valor diferente | **pula** e relata a colisão | grava (a fonte vence) |
+
+Ao final, um resumo em stdout, p.ex.
+`4 importados; 2 já existentes com valor diferente: co, st (use --overwrite)`.
+Uma entrada da fonte com nome reservado (`help`), nome inválido, ou múltiplos
+valores para a mesma chave (a mesma condição que
+[`--rename`](#--rename-renomear-preservando-o-valor) recusa) é **ignorada com
+aviso**, sem bloquear as demais; `alias.alias` é omitido, como no `--export`.
+O mesmo guard vale para um nome que já esteja multivalorado **no arquivo**.
+
+O "não destrói" cobre as entradas que o merge toca. Como toda gravação no
+arquivo, a renormalização final está sujeita à **KI-1** (`docs/known-issues.md`):
+um `alias.X` com mais de um valor editado à mão no arquivo — que a fonte nem
+menciona — é colapsado para o último valor. Resolva a multiplicidade antes
+(`git config --file <arquivo> --get-all alias.X`).
+
+- `--dry-run` mostra o resumo e não grava nada; sai `0` quando chega a
+  executar o merge. As pré-condições que já valem `1` — fonte
+  inexistente/ilegível/inválida, nenhum arquivo versionado detectado —
+  valem igual em `--dry-run` (ver [Códigos de saída](#códigos-de-saída)).
+- Sem arquivo de aliases versionado detectado: erro (ver
+  [Códigos de saída](#códigos-de-saída)). O `--import` **não** cai no
+  `git config --global` — ele existe só para alimentar o arquivo versionado.
+
+> **Segurança.** Um alias cujo valor começa por `!` executa shell quando é
+> invocado. Importar de uma fonte não confiável é, na prática, aceitar
+> executar comando arbitrário depois — revise o `<arquivo>` antes. O comando
+> lembra disso quando algum alias importado tem valor com `!`.
+
+Detalhes em
+[docs/adr/0004-semantica-de-merge-do-import.md](docs/adr/0004-semantica-de-merge-do-import.md).
 
 ### `--rename`: renomear preservando o valor
 
@@ -308,8 +363,8 @@ podem depender destes três valores.
 
 | Código | Significado       | Exemplos                                                                                   |
 | ------ | ------------------ | ------------------------------------------------------------------------------------------- |
-| `0`    | Sucesso             | Alias criado/consultado/removido/renomeado; `--list`, `--export`, `--version`, `--help`; `--doctor` sem nenhuma linha `erro:` (só `ok:` e/ou `aviso:`). |
-| `1`    | Falha esperada      | Consulta de alias inexistente; `--unset`/`--rename` de alias que não existe; `--rename` cujo destino já existe; `--list --file` sem arquivo de aliases incluído; `--rename`/criação cuja limpeza de uma cópia obsoleta falha por um motivo genuíno (lock, permissão), deixando duas definições coexistindo (ou a nova sombreada pela antiga); `--unset` cuja remoção falha pelo mesmo motivo; `--doctor` com pelo menos uma linha `erro:` (`git/bin` fora do `PATH`, `alias.alias` legado sombreando o script). |
+| `0`    | Sucesso             | Alias criado/consultado/removido/renomeado; `--list`, `--export`, `--version`, `--help`; `--import` que roda até o fim (mesmo com colisões puladas ou entradas ignoradas — são relatório, não falha), inclusive `--import --dry-run`; `--doctor` sem nenhuma linha `erro:` (só `ok:` e/ou `aviso:`). |
+| `1`    | Falha esperada      | Consulta de alias inexistente; `--unset`/`--rename` de alias que não existe; `--rename` cujo destino já existe; `--list --file` sem arquivo de aliases incluído; `--import` sem arquivo de aliases versionado detectado, com a fonte inexistente/ilegível/sintaxe inválida, ou cuja gravação de uma entrada falha por um motivo genuíno (lock, permissão) — a entrada não conta como importada; `--rename`/criação cuja limpeza de uma cópia obsoleta falha por um motivo genuíno (lock, permissão), deixando duas definições coexistindo (ou a nova sombreada pela antiga); `--unset` cuja remoção falha pelo mesmo motivo; `--doctor` com pelo menos uma linha `erro:` (`git/bin` fora do `PATH`, `alias.alias` legado sombreando o script). |
 | `2`    | Erro de uso         | Flag ou argumento inválido/faltando; nome de alias inválido; nome reservado (`alias`/`help`) em criação, `--rename` (`<velho>` ou `<novo>`) ou `--unset`. |
 
 ## Testes

@@ -16,7 +16,12 @@ comportamento documentado **não** entra aqui — vai direto para correção.
 (arquivo incluído) perde todos os valores menos o último, sem aviso, na
 primeira vez que `git alias` grava nesse arquivo por qualquer motivo —
 inclusive uma operação sem relação nenhuma com `X` (criar outro alias,
-`--unset` de outro, `--rename` de outro).
+`--unset` de outro, `--rename` de outro, `--import` de outros). O
+`--import` guarda o nome que ele mesmo está importando (entra em
+"ignoradas"), mas um `X` multivalorado que a fonte nem menciona ainda é
+colapsado pela renormalização pós-merge — apesar do texto do `--import`
+prometer "não destrói o que já está lá", que vale para as entradas que o
+merge de fato toca.
 
 **Causa.** Toda gravação no arquivo incluído chama `normalize_or_warn` →
 `alias_render`, que reconstrói a seção `[alias]` re-emitindo cada chave
