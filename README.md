@@ -1,15 +1,16 @@
-# dotfiles
+# git-alias
 
-Configurações pessoais versionadas. Hoje o repositório cobre os aliases do
-Git e a implementação do subcomando `git alias`.
+Um subcomando `git alias` para criar, listar, exportar, importar e
+sincronizar os aliases do Git pela linha de comando — e versionar o
+resultado como um `aliases.gitconfig` legível, com diffs mínimos.
 
 ## Estrutura
 
 ```
-git/
-  aliases.gitconfig   # seção [alias]; git alias grava aqui, sempre ordenada
-  bin/
-    git-alias         # implementação do subcomando `git alias`
+bin/
+  git-alias           # implementação do subcomando `git alias`
+examples/
+  aliases.gitconfig   # amostra do formato gerado por `git alias --export`
 completions/
   git-alias.bash      # completion de `git alias` para bash
   git-alias.zsh       # completion de `git alias` para zsh
@@ -21,6 +22,7 @@ docs/
 tests/
   run.sh              # runner: roda todas as suítes de tests/
   git-alias.sh        # testes do script (HOME isolado)
+  install.sh          # testes do install.sh (HOME isolado)
   repo.sh             # checagem estática do repositório
   version.sh          # checa VERSION do script == cabeçalho do CHANGELOG
   completions.sh      # checagem estática dos arquivos de completion
@@ -30,30 +32,52 @@ CHANGELOG.md          # mudanças por versão (Keep a Changelog)
 LICENSE               # MIT
 ```
 
+## Requisitos
+
+- **Shell POSIX** — o script e os testes rodam em qualquer `sh` compatível
+  (testado em `dash` e `bash`).
+- **Git ≥ 2.9** — depende de `git config --name-only --get-regexp`.
+- **coreutils ou o userland BSD/macOS** — `stat`, `readlink`, `mktemp`,
+  `head`, `sed`, `grep`, `find`; o script detecta e usa as duas variantes
+  (`stat -c`/`stat -f`, `readlink` sem `-f`).
+- Opcional: **bash-completion** e/ou **zsh** para as completions de
+  [`git alias <TAB>`](#completions-de-shell).
+
 ## Instalação
 
-Clone o repositório em `~/Dev/dotfiles` e rode:
+Clone o repositório em qualquer diretório e rode o `install.sh` de dentro
+dele — o script deriva seu próprio caminho, não presume onde você clonou:
 
 ```sh
-~/Dev/dotfiles/install.sh
+git clone <url-do-repo> git-alias
+git-alias/install.sh
 ```
 
 O script é idempotente e faz / orienta quatro coisas:
 
-1. **`include.path`** — adiciona `git/aliases.gitconfig` ao seu
-   `~/.gitconfig` global, para carregar os aliases versionados. Equivale a:
+1. **`include.path`** — garante que há um arquivo de aliases versionado no
+   seu `~/.gitconfig` global. Se `git alias --doctor` já detecta um (em
+   qualquer caminho, veja [Versionamento dos aliases](#versionamento-dos-aliases)),
+   não mexe em nada. Senão, cria um a partir do que você já tem
+   (`git alias --export`) em `${XDG_CONFIG_HOME:-~/.config}/git/aliases.gitconfig`
+   — fora do clone, para sobreviver a um `git pull`/reclone da ferramenta —
+   e adiciona ao `include.path`:
 
    ```sh
-   git config --global --add include.path ~/Dev/dotfiles/git/aliases.gitconfig
+   git config --global --add include.path \
+     "${XDG_CONFIG_HOME:-$HOME/.config}/git/aliases.gitconfig"
    ```
 
-2. **`PATH`** — o subcomando `git alias` é o script `git/bin/git-alias`.
-   Para o Git encontrá-lo, `git/bin` precisa estar no `PATH`. O `install.sh`
-   **não** edita seu shell rc; ele imprime a linha para você colar em
+   `examples/aliases.gitconfig`, no repositório, é só uma amostra do formato
+   — não é o arquivo que o `install.sh` usa.
+
+2. **`PATH`** — o subcomando `git alias` é o script `bin/git-alias`. Para o
+   Git encontrá-lo, `bin` precisa estar no `PATH`. O `install.sh` **não**
+   edita seu shell rc; ele imprime a linha para você colar em
    `~/.bashrc` / `~/.zshrc`:
 
    ```sh
-   export PATH="$HOME/Dev/dotfiles/git/bin:$PATH"
+   export PATH="<caminho-do-clone>/bin:$PATH"
    ```
 
 3. **Remoção do alias inline antigo** — se ainda existir um `alias.alias` no
@@ -73,6 +97,28 @@ O script é idempotente e faz / orienta quatro coisas:
 Para conferir a qualquer momento se a instalação básica (pontos 1 a 3) está
 de pé, rode [`git alias --doctor`](#--doctor-diagnóstico-da-instalação) — é o
 `install.sh` invertido, só leitura. (O `--doctor` não cobre as completions.)
+
+## Desinstalação
+
+Não há um `uninstall.sh`; os quatro passos do `install.sh` se desfazem à
+mão, na mesma ordem:
+
+```sh
+# 1. o arquivo de aliases criado pelo install.sh (ajuste o caminho se você
+#    apontou o include.path para outro lugar); os aliases em si continuam
+#    no arquivo — remova-o só se também quiser descartá-los.
+git config --global --unset include.path \
+  "${XDG_CONFIG_HOME:-$HOME/.config}/git/aliases.gitconfig"
+
+# 2. remova a linha de PATH acrescentada ao seu ~/.bashrc / ~/.zshrc
+
+# 3. nada a desfazer (o install.sh só remove o alias.alias legado; não
+#    recria nada em troca)
+
+# 4. completions (o install.sh só faz symlink; remova o link)
+rm -f "${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions/git-alias"
+rm -f "${XDG_DATA_HOME:-$HOME/.local/share}/zsh/site-functions/_git-alias"
+```
 
 ## `git alias`
 
@@ -140,13 +186,13 @@ cópia solta do script vendorizada noutro repositório mostra o `git describe`
 daquele repo — o número antes do parêntese é sempre a resposta autoritativa.
 `tests/git-alias.sh` fixa a não-interceptação.
 
-O número sai da constante `VERSION` no topo de `git/bin/git-alias`, que é a
+O número sai da constante `VERSION` no topo de `bin/git-alias`, que é a
 fonte única da verdade. Ver [Versão e release](#versão-e-release).
 
 ## Versionamento dos aliases
 
-Com o `install.sh` rodado, o `git/aliases.gitconfig` está no `include.path`
-do seu `~/.gitconfig`. A partir daí, **`git alias <nome> '<cmd>'` e
+Com o `install.sh` rodado, há um arquivo de aliases (`aliases.gitconfig`) no
+`include.path` do seu `~/.gitconfig`. A partir daí, **`git alias <nome> '<cmd>'` e
 `git alias --unset <nome>` gravam direto nesse arquivo** — ele é reconhecido
 pelo cabeçalho `# Gerado por: git alias --export` — e a seção `[alias]` é
 mantida em ordem alfabética (`LC_ALL=C`, estável entre máquinas). Cada
@@ -189,10 +235,10 @@ Detalhes em [docs/adr/0001-git-alias-grava-no-arquivo-de-aliases.md](docs/adr/00
 ### `--export`: reconstruir o arquivo do zero
 
 ```sh
-git alias --export ~/Dev/dotfiles/git/aliases.gitconfig
+git alias --export ~/.config/git/aliases.gitconfig
 ```
 
-Regenera `git/aliases.gitconfig` inteiro a partir do config mesclado, já
+Regenera o arquivo de aliases inteiro a partir do config mesclado, já
 ordenado. Útil na primeira migração ou para consolidar aliases criados antes
 desta mudança. O dispatcher `alias.alias` é omitido de propósito (senão faria
 sombra no script). Rodar `--export` de outra máquina com aliases diferentes
@@ -306,7 +352,7 @@ código. As seções:
   fazem sombra no arquivo. Lista os nomes, marcando os que também existem no
   arquivo (sombra) e os que só existem no `--global` (não versionados). O
   dispatcher `alias.alias` fica para a seção seguinte.
-- **`[git/bin no PATH]`** — o Git despacha `git alias` procurando um
+- **`[git-alias no PATH]`** — o Git despacha `git alias` procurando um
   executável `git-alias` no `PATH`. A checagem passa (`ok:`) quando algum
   diretório do `PATH` contém um `git-alias` que resolve para este script —
   seja o próprio diretório do script, seja um symlink para ele dentro de um
@@ -428,7 +474,7 @@ podem depender destes três valores.
 | Código | Significado       | Exemplos                                                                                   |
 | ------ | ------------------ | ------------------------------------------------------------------------------------------- |
 | `0`    | Sucesso             | Alias criado/consultado/removido/renomeado; `--list`, `--export`, `--version`, `--help`; `--import` que roda até o fim (mesmo com colisões puladas ou entradas ignoradas — são relatório, não falha), inclusive `--import --dry-run`; `--doctor` sem nenhuma linha `erro:` (só `ok:` e/ou `aviso:`). |
-| `1`    | Falha esperada      | Consulta de alias inexistente; `--unset`/`--rename` de alias que não existe; `--rename` cujo destino já existe; `--list --file` sem arquivo de aliases incluído; `--import` sem arquivo de aliases versionado detectado, com a fonte inexistente/ilegível/sintaxe inválida, ou cuja gravação de uma entrada falha por um motivo genuíno (lock, permissão) — a entrada não conta como importada; `--rename`/criação cuja limpeza de uma cópia obsoleta falha por um motivo genuíno (lock, permissão), deixando duas definições coexistindo (ou a nova sombreada pela antiga); `--unset` cuja remoção falha pelo mesmo motivo; `--doctor` com pelo menos uma linha `erro:` (`git/bin` fora do `PATH`, `alias.alias` legado sombreando o script). |
+| `1`    | Falha esperada      | Consulta de alias inexistente; `--unset`/`--rename` de alias que não existe; `--rename` cujo destino já existe; `--list --file` sem arquivo de aliases incluído; `--import` sem arquivo de aliases versionado detectado, com a fonte inexistente/ilegível/sintaxe inválida, ou cuja gravação de uma entrada falha por um motivo genuíno (lock, permissão) — a entrada não conta como importada; `--rename`/criação cuja limpeza de uma cópia obsoleta falha por um motivo genuíno (lock, permissão), deixando duas definições coexistindo (ou a nova sombreada pela antiga); `--unset` cuja remoção falha pelo mesmo motivo; `--doctor` com pelo menos uma linha `erro:` (`git-alias` fora do `PATH`, `alias.alias` legado sombreando o script). |
 | `2`    | Erro de uso         | Flag ou argumento inválido/faltando; nome de alias inválido; nome reservado (`alias`/`help`) em criação, `--rename` (`<velho>` ou `<novo>`) ou `--unset`. |
 
 ## Testes
@@ -441,8 +487,11 @@ O runner roda todas as suítes de `tests/`:
 
 - `tests/git-alias.sh` — exercita o script num `HOME` e num `git config`
   temporários; não altera seu ambiente.
+- `tests/install.sh` — exercita o `install.sh` num `HOME` temporário: detecção
+  de um arquivo de aliases já configurado, criação do alvo XDG quando não há
+  nenhum, idempotência.
 - `tests/repo.sh` — checagem estática do repositório (existe exatamente um
-  `README.md`, na raiz).
+  `README.md`, na raiz; layout de ferramenta — `bin/git-alias`, sem `git/`).
 - `tests/version.sh` — checagem estática: a constante `VERSION` do script é
   igual ao cabeçalho de versão mais recente do `CHANGELOG.md`.
 - `tests/completions.sh` — checagem estática dos arquivos de
@@ -459,7 +508,7 @@ SHELL_UNDER_TEST=bash sh tests/run.sh
 ```
 
 O CI roda a suíte sob `dash` e `bash` e passa o `shellcheck` em
-`git/bin/git-alias`, `install.sh`, `tests/*.sh` e
+`bin/git-alias`, `install.sh`, `tests/*.sh` e
 `completions/git-alias.bash` (o `.zsh` fica de fora — o `shellcheck` não
 cobre zsh). Ver [CONTRIBUTING.md](CONTRIBUTING.md).
 

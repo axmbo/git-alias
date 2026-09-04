@@ -68,7 +68,7 @@ Exemplos:
   git alias teste '!echo teste # Meu comando'
   git alias gone
   git alias --unset teste
-  git alias --export ~/Dev/dotfiles/git/aliases.gitconfig
+  git alias --export ~/.config/git/aliases.gitconfig
 EOF
 }
 
@@ -789,7 +789,7 @@ doctor_dispatch_dir() {
 # Relatório read-only de diagnóstico da instalação — o "install.sh
 # invertido". Não grava nada. Quatro seções: (1) o arquivo de aliases
 # versionado está no include.path e é detectável; (2) há aliases no
-# git config --global fora dele; (3) git/bin está no PATH; (4) sobrou um
+# git config --global fora dele; (3) git-alias está no PATH; (4) sobrou um
 # alias.alias legado. Cada linha é prefixada por "ok:", "aviso:" ou
 # "erro:". Retorna 0 quando não emite nenhuma linha "erro:", 1 quando
 # emite pelo menos uma.
@@ -853,7 +853,7 @@ alias_doctor() {
 	fi
 
 	echo
-	echo "[git/bin no PATH]"
+	echo "[git-alias no PATH]"
 	doctor_self="$(norm_real "$0")"
 	doctor_selfdir="${doctor_self%/*}"
 	doctor_hit="$(doctor_dispatch_dir "$doctor_self")"

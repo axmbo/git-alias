@@ -13,7 +13,7 @@ passo a passo mecânico.
   ```sh
   SHELL_UNDER_TEST=dash sh tests/run.sh
   SHELL_UNDER_TEST=bash sh tests/run.sh
-  shellcheck git/bin/git-alias install.sh tests/*.sh
+  shellcheck bin/git-alias install.sh tests/*.sh
   ```
 
 ## Passos
@@ -22,7 +22,7 @@ passo a passo mecânico.
    estiver na série `0.y`, uma quebra de comando ou de formato incrementa
    MINOR (`0.1.0` → `0.2.0`); a primeira release estável é `1.0.0`.
 
-2. **Bump da constante** em [`git/bin/git-alias`](../git/bin/git-alias):
+2. **Bump da constante** em [`bin/git-alias`](../bin/git-alias):
 
    ```sh
    VERSION='X.Y.Z'

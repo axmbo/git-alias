@@ -12,8 +12,8 @@ comportamento documentado **não** entra aqui — vai direto para correção.
 
 ## KI-1 — `git alias` colapsa um alias multivalorado do arquivo incluído ao reordenar
 
-**Sintoma.** Um `alias.X` com mais de um valor no `git/aliases.gitconfig`
-(arquivo incluído) perde todos os valores menos o último, sem aviso, na
+**Sintoma.** Um `alias.X` com mais de um valor no arquivo de aliases
+versionado (arquivo incluído) perde todos os valores menos o último, sem aviso, na
 primeira vez que `git alias` grava nesse arquivo por qualquer motivo —
 inclusive uma operação sem relação nenhuma com `X` (criar outro alias,
 `--unset` de outro, `--rename` de outro, `--import` de outros). O
@@ -38,7 +38,7 @@ grava valor único). Só chega lá por `git config --add alias.X ... --file
 nenhuma branch: `alias_render` sempre foi assim (está em `main`).
 
 **Contorno.** Antes de deixar `git alias` tocar no arquivo, resolver a
-multiplicidade à mão: `git config --file git/aliases.gitconfig --get-all
+multiplicidade à mão: `git config --file <arquivo-de-aliases> --get-all
 alias.X` para ver os valores, e reduzir a um só (ou mover os demais para
 onde forem pertencer).
 

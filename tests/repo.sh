@@ -1,10 +1,10 @@
 #!/usr/bin/env sh
-# Checagem estática do repositório.
-# Hoje cobre uma única propriedade: existe exatamente um README.md, e ele
-# está na raiz. É exigência do fluxo de trabalho do autor — um único ponto
-# de entrada de documentação, sem ambiguidade para humanos, ferramentas e
-# agentes de IA. Determinístico e sem ferramenta externa: só shell POSIX,
-# find(1) e grep(1).
+# Checagem estática do repositório: existe exatamente um README.md na raiz
+# (fluxo de trabalho do autor — um único ponto de entrada de documentação,
+# sem ambiguidade para humanos, ferramentas e agentes de IA) e o layout é o
+# de repositório de ferramenta (ADR-0002: bin/git-alias, sem git/). Ambas
+# determinísticas e sem ferramenta externa: só shell POSIX, find(1) e
+# grep(1).
 
 set -eu
 
@@ -39,6 +39,17 @@ count="$(printf '%s\n' "$readmes" | grep -c . || true)"
 
 check "existe exatamente um README.md no repositório" "1" "$count"
 check "o único README.md está na raiz" "README.md" "$readmes"
+
+# Layout de repositório de ferramenta (ADR-0002): o script mora em
+# bin/git-alias, executável; git/ (layout antigo de dotfiles) não existe
+# mais. Regressão aqui pegaria um "git mv" desfeito ou uma cópia extra do
+# script deixada para trás.
+check "bin/git-alias existe" \
+	"sim" "$([ -f "$ROOT/bin/git-alias" ] && echo sim || echo nao)"
+check "bin/git-alias é executável" \
+	"sim" "$([ -x "$ROOT/bin/git-alias" ] && echo sim || echo nao)"
+check "não sobrou um git/ do layout antigo" \
+	"nao" "$([ -e "$ROOT/git" ] && echo sim || echo nao)"
 
 echo
 echo "pass=$pass fail=$fail"

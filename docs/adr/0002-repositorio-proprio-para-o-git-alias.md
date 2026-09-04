@@ -7,7 +7,7 @@ Aceito — 2026-08-30
 ## Contexto
 
 Este repositório nasceu com o nome `dotfiles`, mas contém apenas o
-`git-alias`: o script `git/bin/git-alias`, o `install.sh`, os testes, o
+`git-alias`: o script `bin/git-alias`, o `install.sh`, os testes, o
 ADR-0001 e o roadmap pré-1.0. Não há histórico de outros arquivos de
 configuração pessoal.
 
@@ -55,3 +55,7 @@ Implicações, a executar antes da tag `v1.0.0` (itens no `docs/roadmap.md`):
   versionamento vira ADR-0003; semântica do `--import`, ADR-0004.
 - O ADR-0001 continua válido como está — descreve comportamento do script,
   não a estrutura do repositório.
+- Executado no passo 9 do roadmap (2026-09-04): layout achatado para
+  `bin/git-alias`; `aliases.gitconfig` de exemplo movido para
+  `examples/aliases.gitconfig`; `install.sh` deixou de apontar o
+  `include.path` para um arquivo dentro do clone.

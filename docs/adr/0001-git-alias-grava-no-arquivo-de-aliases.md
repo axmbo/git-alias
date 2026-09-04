@@ -6,7 +6,7 @@ Aceito — 2026-08-30
 
 ## Contexto
 
-O subcomando `git alias` (script `git/bin/git-alias`) até aqui:
+O subcomando `git alias` (script `bin/git-alias`) até aqui:
 
 - `git alias <nome> '<cmd>'` grava sempre em `git config --global`
   (`~/.gitconfig`).

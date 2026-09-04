@@ -61,7 +61,7 @@ changelog durante o desenvolvimento pré-1.0.
 
 ### Constante `VERSION` como fonte única
 
-`git/bin/git-alias` carrega no topo `VERSION='X.Y.Z'`. É a única fonte da
+`bin/git-alias` carrega no topo `VERSION='X.Y.Z'`. É a única fonte da
 verdade da versão. `git alias --version` (e o sinônimo `-v`) imprime essa
 constante. Se o diretório do próprio script (resolvido seguindo symlinks,
 não o diretório de trabalho) estiver dentro de um repositório git, anexa

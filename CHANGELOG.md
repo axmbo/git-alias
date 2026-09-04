@@ -48,8 +48,8 @@ projeto estiver na série `0.y`, a superfície de comandos e o formato do
   no `include.path` e é detectável (com a resolução do caminho: absoluto,
   `~/…`, relativo a `$HOME`, cadeia de symlinks), se há aliases no `git
   config --global` fora dele (não versionados / risco de sombra), se
-  `git/bin` está no `PATH` e se sobrou um `alias.alias` legado sombreando o
-  script. Sai `1` se encontra algo que impede `git alias` de funcionar como
+  há um `git-alias` no `PATH` e se sobrou um `alias.alias` legado sombreando
+  o script. Sai `1` se encontra algo que impede `git alias` de funcionar como
   esperado (linha `erro:`), `0` caso contrário (`aviso:` não afeta o código).
 - `git alias --rename <velho> <novo>`: renomeia um alias preservando o valor
   exato (newlines internas do corpo inclusive), no lugar de
@@ -165,6 +165,22 @@ projeto estiver na série `0.y`, a superfície de comandos e o formato do
   — consequência da guarda de F6 que só reserva `help` sem um segundo
   argumento, para permitir `git alias help '<cmd>'` cair na checagem de
   nome reservado em vez de virar um no-op silencioso.
+- Layout do repositório, reorientado para ferramenta instalável
+  ([ADR-0002](docs/adr/0002-repositorio-proprio-para-o-git-alias.md)):
+  `git/bin/git-alias` → `bin/git-alias`; `git/aliases.gitconfig` (o arquivo
+  de aliases do próprio autor, usado como exemplo) → `examples/aliases.gitconfig`,
+  amostra do formato — não é mais o alvo do `install.sh`.
+- `git alias --doctor`: seção `[git/bin no PATH]` renomeada para
+  `[git-alias no PATH]` — o diretório `git/bin` deixou de existir; a seção
+  descreve a mesma checagem (um `git-alias` no `PATH` que resolve para o
+  script). Texto informativo, não contrato de máquina.
+- `install.sh` deixa de gravar `include.path` apontando para um arquivo
+  dentro do clone. Se `git alias --doctor` já detecta um arquivo de aliases
+  versionado (em qualquer caminho), não mexe em nada; senão, cria um a
+  partir do config atual (`git alias --export`) em
+  `${XDG_CONFIG_HOME:-~/.config}/git/aliases.gitconfig` — fora do clone,
+  sobrevivendo a um reclone/`git pull` da ferramenta — e adiciona esse ao
+  `include.path`.
 
 ## [0.1.0] - 2026-08-31
 

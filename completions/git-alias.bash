@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# bash completion para o subcomando "git alias" (git/bin/git-alias).
+# bash completion para o subcomando "git alias" (bin/git-alias).
 #
 # NÃO é um script source-ável genérico. A completion do próprio Git
 # (git-completion.bash, que acompanha o Git) despacha "git alias …" para uma
@@ -10,7 +10,7 @@
 # variáveis cur/prev/cword/words e os helpers __gitcomp/__gitcomp_nl/_filedir.
 
 # Nomes de alias já definidos, um por linha — mesma fonte que alias_names()
-# em git/bin/git-alias: chaves alias.* do config mesclado, sem o dispatcher
+# em bin/git-alias: chaves alias.* do config mesclado, sem o dispatcher
 # "alias.alias". "--name-only" exige git >= 2.9 (já é dependência do script).
 # Usa o wrapper __git do git-completion.bash (não "git" puro) para respeitar
 # -C / --git-dir da linha de comando.

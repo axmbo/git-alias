@@ -15,10 +15,11 @@ sh tests/run.sh
 
 Ele executa:
 
-- `tests/git-alias.sh` — exercita `git/bin/git-alias` num `HOME` e num
+- `tests/git-alias.sh` — exercita `bin/git-alias` num `HOME` e num
   `git config` temporários; não toca no seu ambiente.
+- `tests/install.sh` — exercita `install.sh` num `HOME` temporário.
 - `tests/repo.sh` — checagem estática do repositório (hoje: existe
-  exatamente um `README.md`, na raiz).
+  exatamente um `README.md`, na raiz; layout de ferramenta em `bin/`).
 - `tests/version.sh` — checagem estática: a constante `VERSION` do script é
   igual ao cabeçalho de versão mais recente do `CHANGELOG.md`.
 - `tests/completions.sh` — checagem estática dos arquivos de
@@ -41,7 +42,7 @@ Antes de abrir um PR, rode a suíte sob os dois. O CI faz o mesmo (ver
 Todo shell versionado tem que passar no `shellcheck` sem avisos:
 
 ```sh
-shellcheck git/bin/git-alias install.sh tests/*.sh completions/git-alias.bash
+shellcheck bin/git-alias install.sh tests/*.sh completions/git-alias.bash
 ```
 
 `completions/git-alias.zsh` fica de fora: o `shellcheck` não analisa zsh. A
@@ -135,7 +136,7 @@ atualiza-se o `Status` do antigo.
 
 ## Versão e release
 
-A versão vive na constante `VERSION` no topo de `git/bin/git-alias` — fonte
+A versão vive na constante `VERSION` no topo de `bin/git-alias` — fonte
 única. `CHANGELOG.md` (formato *Keep a Changelog*) registra as mudanças por
 versão, e `tests/version.sh` falha o CI se os dois saírem de sincronia.
 Toda mudança que altere a superfície de comandos ou o formato do

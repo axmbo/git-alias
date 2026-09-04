@@ -8,7 +8,7 @@
 set -eu
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SCRIPT="$ROOT/git/bin/git-alias"
+SCRIPT="$ROOT/bin/git-alias"
 CHANGELOG="$ROOT/CHANGELOG.md"
 pass=0
 fail=0

@@ -1,10 +1,10 @@
 #!/usr/bin/env sh
-# Testes do script git/bin/git-alias.
+# Testes do script bin/git-alias.
 # Roda num HOME/config temporário — não toca no ambiente real.
 
 set -eu
 
-SCRIPT="$(cd "$(dirname "$0")/../git/bin" && pwd)/git-alias"
+SCRIPT="$(cd "$(dirname "$0")/../bin" && pwd)/git-alias"
 pass=0
 fail=0
 
@@ -1337,9 +1337,9 @@ check "-v é sinônimo de --version" \
 # Cópia num checkout git de mentira (hermético — não depende de como esta
 # suíte foi obtida): --version anexa o "git describe" desse repo, verbatim.
 # Tag no HEAD e árvore limpa => o describe é exatamente o nome da tag.
-mkdir -p "$SB/checkout/git/bin"
-cp "$SCRIPT" "$SB/checkout/git/bin/git-alias"
-chmod +x "$SB/checkout/git/bin/git-alias"
+mkdir -p "$SB/checkout/bin"
+cp "$SCRIPT" "$SB/checkout/bin/git-alias"
+chmod +x "$SB/checkout/bin/git-alias"
 (
 	cd "$SB/checkout"
 	git init -q .
@@ -1348,7 +1348,7 @@ chmod +x "$SB/checkout/git/bin/git-alias"
 	git tag marco
 ) 2>/dev/null
 check "--version de dentro de um checkout anexa o git describe" \
-	"$BARE (marco)" "$("$SB/checkout/git/bin/git-alias" --version)"
+	"$BARE (marco)" "$("$SB/checkout/bin/git-alias" --version)"
 
 # O Git NÃO intercepta "--version" de um subcomando externo (ao contrário de
 # "--help", que ele desvia para a man page inexistente "git-alias"): com o
@@ -1407,7 +1407,7 @@ check "--doctor: reconhecido como subcomando e recusa argumento extra (exit 2)" 
 	"$D_USAGE"
 
 # Diretório do próprio script — posto no PATH nos testes de seção abaixo para
-# que a seção "[git/bin no PATH]" reporte "ok:" e não contamine o exit code
+# que a seção "[git-alias no PATH]" reporte "ok:" e não contamine o exit code
 # da seção que está sendo exercitada.
 DSCRIPT_DIR="$(dirname "$SCRIPT")"
 
@@ -1427,7 +1427,7 @@ check "--doctor sem include.path: seção [arquivo de aliases versionado] presen
 	"sim" "$(printf '%s\n' "$D_NOINC" | grep -qF '[arquivo de aliases versionado]' && echo sim || echo nao)"
 check "--doctor sem include.path: aviso citando include.path" \
 	"sim" "$(printf '%s\n' "$D_NOINC" | grep -Eq 'aviso:.*include\.path|include\.path.*aviso:' && echo sim || echo nao)"
-check "--doctor sem include.path (git/bin no PATH, sem alias.alias legado): exit 0" \
+check "--doctor sem include.path (git-alias no PATH, sem alias.alias legado): exit 0" \
 	"st=0" "$(printf '%s\n' "$D_NOINC" | grep -E '^st=')"
 
 # --- [arquivo de aliases versionado]: arquivo detectado -----------------
@@ -1631,7 +1631,7 @@ check "--doctor seção 2: 'solto' (só no --global) é marcado como não versio
 check "--doctor seção 2: sombra/não-versionado ainda são aviso (exit 0)" \
 	"st=0" "$(printf '%s\n' "$D_GSHADOW" | grep -E '^st=')"
 
-# --- [git/bin no PATH]: diretório do script no PATH ---------------------
+# --- [git-alias no PATH]: diretório do script no PATH ---------------------
 D_PATH_OK="$(
 	DH="$SB/doctor-pathok"
 	mkdir -p "$DH"
@@ -1644,17 +1644,17 @@ D_PATH_OK="$(
 	git config --global --add include.path "$AFD"
 	st=0
 	out="$(PATH="$DSCRIPT_DIR:$PATH" "$SCRIPT" --doctor)" || st=$?
-	sec="$(printf '%s\n' "$out" | sed -n '/\[git\/bin no PATH\]/,/^\[/p')"
+	sec="$(printf '%s\n' "$out" | sed -n '/\[git-alias no PATH\]/,/^\[/p')"
 	printf 'st=%s\n%s' "$st" "$sec"
 )"
-check "--doctor: seção [git/bin no PATH] presente" \
-	"sim" "$(printf '%s\n' "$D_PATH_OK" | grep -qF '[git/bin no PATH]' && echo sim || echo nao)"
+check "--doctor: seção [git-alias no PATH] presente" \
+	"sim" "$(printf '%s\n' "$D_PATH_OK" | grep -qF '[git-alias no PATH]' && echo sim || echo nao)"
 check "--doctor: diretório do script no PATH — linha ok: com o caminho" \
 	"sim" "$(printf '%s\n' "$D_PATH_OK" | grep 'ok:' | grep -qF "$DSCRIPT_DIR" && echo sim || echo nao)"
 check "--doctor: diretório do script no PATH — exit 0" \
 	"st=0" "$(printf '%s\n' "$D_PATH_OK" | grep -E '^st=')"
 
-# --- [git/bin no PATH]: diretório do script FORA do PATH ---------------
+# --- [git-alias no PATH]: diretório do script FORA do PATH ---------------
 # PATH depurado do dir do script (o ambiente de quem roda a suíte pode
 # tê-lo — install.sh instrui isso — mas o CI não): teste determinístico
 # nos dois. git continua acessível pelos demais componentes.
@@ -1671,7 +1671,7 @@ D_PATH_ERR="$(
 	CLEANPATH="$(printf '%s\n' "$PATH" | tr ':' '\n' | grep -vxF "$DSCRIPT_DIR" | paste -sd: -)"
 	st=0
 	out="$(PATH="$CLEANPATH" "$SCRIPT" --doctor)" || st=$?
-	sec="$(printf '%s\n' "$out" | sed -n '/\[git\/bin no PATH\]/,/^\[/p')"
+	sec="$(printf '%s\n' "$out" | sed -n '/\[git-alias no PATH\]/,/^\[/p')"
 	printf 'st=%s\n%s' "$st" "$sec"
 )"
 check "--doctor: script fora do PATH — linha erro:" \
@@ -1679,7 +1679,7 @@ check "--doctor: script fora do PATH — linha erro:" \
 check "--doctor: script fora do PATH — exit 1" \
 	"st=1" "$(printf '%s\n' "$D_PATH_ERR" | grep -E '^st=')"
 
-# --- [git/bin no PATH]: script alcançável por symlink dentro de um dir do
+# --- [git-alias no PATH]: script alcançável por symlink dentro de um dir do
 #     PATH (layout stow/dotbot) — instalação VÁLIDA, não pode dar erro ----
 # ~/bin/git-alias -> <script real>, com ~/bin no PATH e o dir real FORA
 # dele. "git alias" funciona; --doctor não pode alegar que está quebrado.
@@ -1698,11 +1698,11 @@ D_PATH_SYMLINK="$(
 	# (a) invocado via o symlink no PATH, como o Git despacharia
 	st=0
 	sa="$(PATH="$DH/bin:$CLEANPATH" git-alias --doctor)" || st=$?
-	via_sym="$(printf '%s\n' "$sa" | sed -n '/\[git\/bin no PATH\]/,/^\[/p' | grep -q 'ok:' && echo ok || echo nao)"
+	via_sym="$(printf '%s\n' "$sa" | sed -n '/\[git-alias no PATH\]/,/^\[/p' | grep -q 'ok:' && echo ok || echo nao)"
 	# (b) invocado pelo caminho real, sendo o symlink no PATH o setup real
 	st2=0
 	sb="$(PATH="$DH/bin:$CLEANPATH" "$SCRIPT" --doctor)" || st2=$?
-	via_real="$(printf '%s\n' "$sb" | sed -n '/\[git\/bin no PATH\]/,/^\[/p' | grep -q 'ok:' && echo ok || echo nao)"
+	via_real="$(printf '%s\n' "$sb" | sed -n '/\[git-alias no PATH\]/,/^\[/p' | grep -q 'ok:' && echo ok || echo nao)"
 	printf 'st=%s sym=%s st2=%s real=%s' "$st" "$via_sym" "$st2" "$via_real"
 )"
 check "--doctor: script alcançável por symlink num dir do PATH — ok, exit 0 (nos dois modos de invocação)" \

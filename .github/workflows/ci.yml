@@ -46,7 +46,7 @@ jobs:
       - name: Rodar shellcheck
         # completions/git-alias.zsh fica de fora: shellcheck não analisa zsh
         # (a sintaxe dele é coberta por tests/completions.sh, via zsh -n).
-        run: shellcheck git/bin/git-alias install.sh tests/*.sh completions/git-alias.bash
+        run: shellcheck bin/git-alias install.sh tests/*.sh completions/git-alias.bash
 
   # TODO (docs/roadmap.md, "Prontidão para open source" / v1.0): ampliar a
   # matriz antes da tag v1.0.0.

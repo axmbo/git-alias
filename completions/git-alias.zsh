@@ -8,7 +8,7 @@
 # completion zsh de verdade.
 
 # Preenche o array `_gaa` (declarado no chamador) com os nomes de alias já
-# definidos — mesma fonte que alias_names() em git/bin/git-alias: chaves
+# definidos — mesma fonte que alias_names() em bin/git-alias: chaves
 # alias.* do config, sem o dispatcher "alias.alias". Chamada só nos ramos que
 # de fato usam a lista. Expansão sem aspas: campos vazios são descartados.
 # (Ao contrário do lado bash, não há um wrapper que replique -C/--git-dir da

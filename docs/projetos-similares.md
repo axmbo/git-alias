@@ -7,10 +7,10 @@ Contagem de estrelas é do dia da consulta e envelhece rápido.
 
 Este repositório faz duas coisas:
 
-1. o subcomando `git alias` (`git/bin/git-alias`), que cria, lista, exporta
+1. o subcomando `git alias` (`bin/git-alias`), que cria, lista, exporta
    e remove aliases do Git pela linha de comando;
-2. versiona esses aliases num `git/aliases.gitconfig` carregado via
-   `include.path`, no estilo dotfiles.
+2. versiona esses aliases num `aliases.gitconfig` carregado via
+   `include.path`.
 
 O levantamento abaixo cobre três círculos concêntricos de semelhança.
 
