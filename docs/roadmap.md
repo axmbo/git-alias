@@ -165,34 +165,40 @@ raiz + identificador SPDX no README (e opcionalmente cabeçalho
 
 ### v1.0
 
-- [ ] **Reestruturar para repo de ferramenta** (ADR-0002): rename do repo para
-      `git-alias`; avaliar achatar `git/bin/git-alias` → `bin/git-alias`;
-      `git/aliases.gitconfig` de exemplo vira amostra (`examples/`) ou só
-      documentação; remover `~/Dev/dotfiles` e menções a "dotfiles" da prosa
-      e do `CLAUDE.md`. Faz par com o item **README** abaixo.
+- [x] **Reestruturar para repo de ferramenta** (ADR-0002): layout achatado
+      `git/bin/git-alias` → `bin/git-alias`; `git/aliases.gitconfig` vira
+      amostra (`examples/aliases.gitconfig`); `install.sh` deriva o alvo do
+      `include.path` fora do clone (XDG), sem pressupor `~/Dev/dotfiles`.
+      `~/.claude/CLAUDE.md` global conferido — já não tinha menções a
+      `~/Dev/dotfiles`/dotfiles (só a outro projeto); nada a ajustar.
+      **Falta só o rename do repositório no GitHub** — D-d: fica para o
+      passo 10, junto da criação do remote/publicação. Squash
+      `437036a`.
 - [x] **`LICENSE`** (ver D2). MIT, titular "Alexandre Leite", 2026.
 - [x] **`CONTRIBUTING.md`**: como rodar os testes; expectativa de TDD;
       Conventional Commits; processo de ADR; shellcheck.
-- [~] **CI (GitHub Actions)**: básico feito em `.github/workflows/ci.yml` —
-      `tests/run.sh` em push/PR sob **`dash` e `bash`** + `shellcheck` em
-      `git/bin/git-alias`, `install.sh` e `tests/*.sh`. **Falta** (job macOS
-      comentado + TODO no arquivo): **matriz de versões do git** (uma antiga
-      + a mais nova — dependemos de `--name-only` do git ≥ 2.9 e do last-wins
-      do `git config --get`); runner **macOS** (BSD `stat`, `readlink` sem
-      `-f`, `mktemp`).
+- [x] **CI (GitHub Actions)**: `.github/workflows/ci.yml` — `tests/run.sh`
+      em push/PR sob **`dash` e `bash`**, cruzado com **duas versões de
+      git** (piso `2.9.0`, compilado do tarball oficial verificado por
+      SHA256, e a mais nova do runner); job **macOS** (`macos-latest`, BSD
+      `stat`/`readlink`/`mktemp`); `shellcheck` em `bin/git-alias`,
+      `install.sh`, `tests/*.sh` e `completions/git-alias.bash`. Squash
+      `c1ce453`.
 - [x] **Teste de README único**: check determinístico no `tests/` de que
       existe exatamente um `README.md`, na raiz (exigência do fluxo de
-      trabalho do autor). `tests/repo.sh`, rodado pelo `tests/run.sh`.
+      trabalho do autor). `tests/repo.sh`, rodado pelo `tests/run.sh` —
+      ganhou também a checagem de layout (`bin/git-alias`, sem `git/`).
 - [x] **`.editorconfig`**: travar indentação com tab (script e `tests/`).
-- [ ] **README**: tirar o hardcode de `~/Dev/dotfiles` da prosa (o
-      `install.sh` já deriva o diretório de `$0`); adicionar "Requisitos"
-      (POSIX sh, git ≥ 2.9, coreutils **ou** BSD), "Desinstalação", quickstart
-      sem pressupor caminho.
-- [ ] **Templates** `.github/ISSUE_TEMPLATE/` (bug pede `git alias --version` +
-      `git --version` + OS) e PR template.
-- [ ] **Auditoria de portabilidade**: `mktemp` com template, flags de `stat`,
-      `readlink` sem `-f`, `head -n`, ausência de `sed -i`. Cobrir com o
-      runner macOS do CI.
+- [x] **README**: tirou o hardcode de `~/Dev/dotfiles` da prosa; seções
+      "Requisitos" (POSIX sh, git ≥ 2.9, coreutils **ou** BSD) e
+      "Desinstalação" novas; quickstart de instalação sem pressupor
+      caminho de clone; reposicionado de "dotfiles pessoais" para
+      "ferramenta que se instala".
+- [x] **Templates** `.github/ISSUE_TEMPLATE/` (bug pede `git alias --version` +
+      `git --version` + OS) e PR template. Squash `de157c8`.
+- [x] **Auditoria de portabilidade**: `docs/portabilidade.md` — `mktemp`
+      com template, flags de `stat`, `readlink` sem `-f`, `head -n`,
+      ausência de `sed -i`, `LC_COLLATE`. Coberta pelo runner macOS do CI.
 
 ---
 
@@ -211,9 +217,12 @@ raiz + identificador SPDX no README (e opcionalmente cabeçalho
 6. [x] F3 (`--doctor`).
 7. [x] **ADR-0004** → F2 (`--import`).
 8. [x] F8 (completions).
-9. [ ] Reestruturar para repo de ferramenta + reescrever README (ADR-0002);
-       fechar o CI (matriz de versões de git + runner macOS, hoje TODO/job
-       comentado em `ci.yml`) junto da auditoria de portabilidade.
+9. [x] Reestruturar para repo de ferramenta + reescrever README (ADR-0002);
+       fechar o CI (matriz de versões de git + runner macOS) junto da
+       auditoria de portabilidade; templates de issue/PR. 4 sub-branches
+       (build/shellcheck-debt `c195c64`; refactor/layout-ferramenta
+       `437036a`; ci/matriz-git-macos `c1ce453`; chore/templates-github
+       `de157c8`), cada uma com `/code-review` até estabilizar.
 10. [ ] Tag **`v1.0.0`**, publicar.
 11. [ ] Backlog v1.1: F9 (man page), F10 (`--edit`), F11 (`--sync`), F2/adopt,
         F2/subconjunto, F12 (`--local`).
