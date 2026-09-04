@@ -31,11 +31,20 @@ jobs:
       # passo de instalação para eles.
       - name: Compilar git ${{ env.GIT_FLOOR_VERSION }} (piso de --name-only)
         if: matrix.git-version == 'floor'
+        # Achado na 1ª execução real do CI: rodar isto dentro do checkout
+        # (working-directory default) deixa "git-${GIT_FLOOR_VERSION}/"
+        # (com seu próprio README.md) para trás na árvore do repositório —
+        # tests/repo.sh (checagem de README.md único) via find() enxergava
+        # os dois. Build inteiro num diretório fora do checkout
+        # ($RUNNER_TEMP), só o binário instalado entra no PATH.
         run: |
           set -eu
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             autoconf libcurl4-openssl-dev libssl-dev libexpat1-dev zlib1g-dev
+          build_dir="$RUNNER_TEMP/git-floor-build"
+          mkdir -p "$build_dir"
+          cd "$build_dir"
           tarball="git-floor.tar.gz"
           url="https://github.com/git/git/archive/refs/tags/v${GIT_FLOOR_VERSION}.tar.gz"
           curl -fsSL -o "$tarball" "$url"

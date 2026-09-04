@@ -7,6 +7,7 @@ set -eu
 SCRIPT="$(cd "$(dirname "$0")/../bin" && pwd)/git-alias"
 pass=0
 fail=0
+skip=0
 
 check() { # descrição, esperado, obtido
 	if [ "$2" = "$3" ]; then
@@ -20,6 +21,16 @@ check() { # descrição, esperado, obtido
 	fi
 }
 
+# Descrição -> "skip - <descrição>", como tests/completions.sh já faz para
+# zsh ausente. Usado abaixo por checagens que dependem de um recurso do
+# próprio Git mais novo que o piso de compatibilidade da ferramenta (git >=
+# 2.9, por --name-only) — não do que a ferramenta usa, só de como O TESTE
+# simula o cenário.
+skip_check() {
+	skip=$((skip + 1))
+	echo "skip - $1"
+}
+
 SB="$(mktemp -d)"
 trap 'rm -rf "$SB"' EXIT
 export HOME="$SB"
@@ -28,7 +39,38 @@ export GIT_CONFIG_SYSTEM=/dev/null
 # Impede que o "git describe" novo (usado por --version) escape do sandbox e
 # encontre um repositório real acima de /tmp.
 export GIT_CEILING_DIRECTORIES="$SB"
+# Achado na 1ª execução real do CI (runner do GitHub Actions define
+# XDG_CONFIG_HOME no ambiente): xdg_global_file() no script usa
+# "${XDG_CONFIG_HOME:-$HOME/.config}/git/config", a mesma resolução que o
+# próprio Git usa para seu fallback --global. Sem isolar a variável aqui,
+# os testes de fallback XDG abaixo (que escrevem direto em
+# "$XDGHOME.../.config/git/config") ficam olhando para um caminho e o
+# script (herdando o XDG_CONFIG_HOME real do ambiente) para outro — o
+# alias parece "não existir". tests/install.sh já isola por sandbox
+# (linha "XDG_CONFIG_HOME=\"\$ri_home/.config\""); aqui basta remover a
+# variável do ambiente: cada bloco de teste abaixo já sobrescreve HOME e
+# a resolução default (\$HOME/.config) volta a valer dentro dele.
+unset XDG_CONFIG_HOME
 cd "$SB"
+
+# Achados na 1ª execução real do CI, job "git floor" (2.9.0 compilado):
+# duas checagens abaixo simulam cenário usando recursos que só existem em
+# Git bem mais novo que o piso da ferramenta — "GIT_CONFIG_SYSTEM" (env
+# var para redirecionar a camada --system; adicionada no Git 2.32,
+# mesmo release de "--fixed-value") e "--list-cmds=builtins" (Git >=
+# 2.18, documentado como degradação silenciosa no próprio bin/git-alias
+# — ver comentário perto de "cmds=\"\$(git --list-cmds=builtins...").
+# Sondados uma vez aqui; sem suporte, as checagens correspondentes pulam
+# com skip_check em vez de falhar por uma limitação do AMBIENTE de
+# teste, não da ferramenta.
+HAS_GIT_CONFIG_SYSTEM_ENV=1
+PROBE_SCFG="$SB/.probe-system-gitconfig"
+(GIT_CONFIG_SYSTEM="$PROBE_SCFG" git config --system probe.ok true) >/dev/null 2>&1 || true
+[ -f "$PROBE_SCFG" ] || HAS_GIT_CONFIG_SYSTEM_ENV=0
+rm -f "$PROBE_SCFG"
+
+HAS_LIST_CMDS_BUILTINS=1
+git --list-cmds=builtins >/dev/null 2>&1 || HAS_LIST_CMDS_BUILTINS=0
 
 git config --global user.email t@t
 git config --global user.name t
@@ -234,7 +276,16 @@ SHADOW_ERR="$("$SCRIPT" --list 2>&1 >/dev/null)"
 check "--list não confunde sombra obsoleta (arquivo + cópia no --global) com multivalor real" \
 	"nao" "$(printf '%s' "$SHADOW_ERR" | grep -q shadowed && echo sim || echo nao)"
 git config --global --unset-all alias.shadowed 2>/dev/null || true
-git config --global --unset-all --fixed-value include.path "$AFSHADOW" 2>/dev/null || true
+# "--fixed-value" (git >= 2.32) só apareceu na 1ª execução real do CI, sob
+# o piso de compatibilidade (git 2.9.0): a flag não existe nessa versão, o
+# comando falhava e o "|| true" mascarava — deixando $AFSHADOW preso no
+# include.path e contaminando todo teste seguinte que espera só $AF lá
+# (obtido "shadow.gitconfig" em vez de "aliases.gitconfig"). Só há esta
+# única entrada em include.path neste ponto (nenhum --add antes desta
+# linha no arquivo); --unset-all sem padrão de valor, o mesmo idioma já
+# usado mais abaixo (achado da 1ª execução do CI), remove sem depender da
+# flag.
+git config --global --unset-all include.path 2>/dev/null || true
 
 # Achado na 14ª revisão: sob "set -eu" em dash/bash, uma falha do "git
 # config --get" dentro do "while read" que consome a saída de
@@ -479,21 +530,27 @@ git config --global --unset-all alias.dupvalrenamed 2>/dev/null || true
 # multiplicidade só nessas duas camadas oferece risco real de perda; nas
 # demais, o pior caso é o alias "ressurgir" com o valor antigo depois do
 # rename, já coberto pelo aviso de "ainda existe em outra fonte".
-SYSCFG="$SB/gitconfig-system"
-st=0
-rensysout="$(
-	GIT_CONFIG_SYSTEM="$SYSCFG"
-	export GIT_CONFIG_SYSTEM
-	git config --system alias.stsys status
-	git config --global alias.stsys 'status -sb'
-	"$SCRIPT" --rename stsys stsysrenamed
-)" || st=$?
-check "--rename de alias definido em camadas diferentes (--system + --global): não recusa" \
-	"0" "$st"
-check "--rename entre camadas diferentes: mensagem confirma a renomeação" \
-	"sim" "$(printf '%s' "$rensysout" | grep -qF "Alias 'stsys' renomeado para 'stsysrenamed'" && echo sim || echo nao)"
-check "--rename entre camadas diferentes: preserva o valor efetivo (--global vence)" \
-	"status -sb" "$(GIT_CONFIG_SYSTEM="$SYSCFG" git config --get alias.stsysrenamed 2>/dev/null || true)"
+if [ "$HAS_GIT_CONFIG_SYSTEM_ENV" -eq 1 ]; then
+	SYSCFG="$SB/gitconfig-system"
+	st=0
+	rensysout="$(
+		GIT_CONFIG_SYSTEM="$SYSCFG"
+		export GIT_CONFIG_SYSTEM
+		git config --system alias.stsys status
+		git config --global alias.stsys 'status -sb'
+		"$SCRIPT" --rename stsys stsysrenamed
+	)" || st=$?
+	check "--rename de alias definido em camadas diferentes (--system + --global): não recusa" \
+		"0" "$st"
+	check "--rename entre camadas diferentes: mensagem confirma a renomeação" \
+		"sim" "$(printf '%s' "$rensysout" | grep -qF "Alias 'stsys' renomeado para 'stsysrenamed'" && echo sim || echo nao)"
+	check "--rename entre camadas diferentes: preserva o valor efetivo (--global vence)" \
+		"status -sb" "$(GIT_CONFIG_SYSTEM="$SYSCFG" git config --get alias.stsysrenamed 2>/dev/null || true)"
+else
+	skip_check "--rename de alias definido em camadas diferentes (--system + --global): não recusa (GIT_CONFIG_SYSTEM não suportado nesta versão do Git)"
+	skip_check "--rename entre camadas diferentes: mensagem confirma a renomeação (GIT_CONFIG_SYSTEM não suportado)"
+	skip_check "--rename entre camadas diferentes: preserva o valor efetivo (GIT_CONFIG_SYSTEM não suportado)"
+fi
 
 # --- git alias --rename: caminhos de erro -----------------------------------
 st=0
@@ -514,19 +571,25 @@ check "--rename para nome já existente (arquivo/--global): sugere --unset que d
 # --unset não alcança (--system, aqui), a mensagem sugeria
 # "git alias --unset <novo>" incondicionalmente — seguir a sugestão dá
 # "Aviso: não existe", deixando o usuário sem entender por quê.
-SYSONLY="$SB/gitconfig-system-sysonly"
-st=0
-sysonlyout="$(
-	GIT_CONFIG_SYSTEM="$SYSONLY"
-	export GIT_CONFIG_SYSTEM
-	git config --system alias.sysonly '!echo sys'
-	"$SCRIPT" --rename outro sysonly 2>&1
-)" || st=$?
-check "--rename para nome já existente só em --system: exit code 1" "1" "$st"
-check "--rename para nome já existente só em --system: não sugere --unset (não funcionaria)" \
-	"nao" "$(printf '%s' "$sysonlyout" | grep -qF "git alias --unset sysonly" && echo sim || echo nao)"
-check "--rename para nome já existente só em --system: explica que está fora do alcance" \
-	"sim" "$(printf '%s' "$sysonlyout" | grep -qF "fora do arquivo incluído e do --global" && echo sim || echo nao)"
+if [ "$HAS_GIT_CONFIG_SYSTEM_ENV" -eq 1 ]; then
+	SYSONLY="$SB/gitconfig-system-sysonly"
+	st=0
+	sysonlyout="$(
+		GIT_CONFIG_SYSTEM="$SYSONLY"
+		export GIT_CONFIG_SYSTEM
+		git config --system alias.sysonly '!echo sys'
+		"$SCRIPT" --rename outro sysonly 2>&1
+	)" || st=$?
+	check "--rename para nome já existente só em --system: exit code 1" "1" "$st"
+	check "--rename para nome já existente só em --system: não sugere --unset (não funcionaria)" \
+		"nao" "$(printf '%s' "$sysonlyout" | grep -qF "git alias --unset sysonly" && echo sim || echo nao)"
+	check "--rename para nome já existente só em --system: explica que está fora do alcance" \
+		"sim" "$(printf '%s' "$sysonlyout" | grep -qF "fora do arquivo incluído e do --global" && echo sim || echo nao)"
+else
+	skip_check "--rename para nome já existente só em --system: exit code 1 (GIT_CONFIG_SYSTEM não suportado nesta versão do Git)"
+	skip_check "--rename para nome já existente só em --system: não sugere --unset (GIT_CONFIG_SYSTEM não suportado)"
+	skip_check "--rename para nome já existente só em --system: explica que está fora do alcance (GIT_CONFIG_SYSTEM não suportado)"
+fi
 
 st=0
 out="$("$SCRIPT" --rename outro 2>&1)" || st=$?
@@ -1224,8 +1287,12 @@ check "--unset com falha genuína na remoção: mensagem não diz 'não existe' 
 
 # --- F6: aviso (não recusa) ao sombrear um comando builtin do Git ----------
 errout="$("$SCRIPT" status '!echo x' 2>&1 >/dev/null)"
-check "criar alias que sombreia um builtin do Git avisa" \
-	"sim" "$(printf '%s' "$errout" | grep -qF "'status'" && echo sim || echo nao)"
+if [ "$HAS_LIST_CMDS_BUILTINS" -eq 1 ]; then
+	check "criar alias que sombreia um builtin do Git avisa" \
+		"sim" "$(printf '%s' "$errout" | grep -qF "'status'" && echo sim || echo nao)"
+else
+	skip_check "criar alias que sombreia um builtin do Git avisa (--list-cmds=builtins não suportado nesta versão do Git; warn_if_builtin_shadow degrada em silêncio, como documentado)"
+fi
 check "criar alias que sombreia um builtin: grava mesmo assim" \
 	"status = !echo x" "$("$SCRIPT" status)"
 
@@ -2440,5 +2507,5 @@ check "--import --dry-run de fonte inexistente: exit 1 (igual ao modo real)" \
 	"fonte_inexistente=1" "$(printf '%s\n' "$I_DRYPRE" | grep '^fonte_inexistente=')"
 
 echo
-echo "pass=$pass fail=$fail"
+echo "pass=$pass fail=$fail skip=$skip"
 [ "$fail" -eq 0 ]
