@@ -28,6 +28,18 @@ export GIT_CONFIG_SYSTEM=/dev/null
 # Impede que o "git describe" novo (usado por --version) escape do sandbox e
 # encontre um repositório real acima de /tmp.
 export GIT_CEILING_DIRECTORIES="$SB"
+# Achado na 1ª execução real do CI (runner do GitHub Actions define
+# XDG_CONFIG_HOME no ambiente): xdg_global_file() no script usa
+# "${XDG_CONFIG_HOME:-$HOME/.config}/git/config", a mesma resolução que o
+# próprio Git usa para seu fallback --global. Sem isolar a variável aqui,
+# os testes de fallback XDG abaixo (que escrevem direto em
+# "$XDGHOME.../.config/git/config") ficam olhando para um caminho e o
+# script (herdando o XDG_CONFIG_HOME real do ambiente) para outro — o
+# alias parece "não existir". tests/install.sh já isola por sandbox
+# (linha "XDG_CONFIG_HOME=\"\$ri_home/.config\""); aqui basta remover a
+# variável do ambiente: cada bloco de teste abaixo já sobrescreve HOME e
+# a resolução default (\$HOME/.config) volta a valer dentro dele.
+unset XDG_CONFIG_HOME
 cd "$SB"
 
 git config --global user.email t@t
