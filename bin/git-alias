@@ -43,7 +43,7 @@ export LC_ALL
 
 # Fonte única da verdade da versão. Bump segue docs/adr/0003-*.md e
 # docs/releasing.md; tests/version.sh amarra esta constante ao CHANGELOG.md.
-VERSION='0.1.0'
+VERSION='1.0.0'
 
 usage() {
 	cat <<'EOF'
