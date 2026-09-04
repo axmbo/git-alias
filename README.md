@@ -19,6 +19,7 @@ docs/
   roadmap.md          # roteiro pré-1.0 (transitório)
   releasing.md        # passo a passo de release
   known-issues.md     # bugs conhecidos de baixa probabilidade, adiados
+  portabilidade.md    # auditoria coreutils vs. BSD/macOS
 tests/
   run.sh              # runner: roda todas as suítes de tests/
   git-alias.sh        # testes do script (HOME isolado)
@@ -507,7 +508,11 @@ SHELL_UNDER_TEST=dash sh tests/run.sh
 SHELL_UNDER_TEST=bash sh tests/run.sh
 ```
 
-O CI roda a suíte sob `dash` e `bash` e passa o `shellcheck` em
+O CI (`.github/workflows/ci.yml`) roda a suíte sob `dash` e `bash`, contra
+duas versões de git — o piso de compatibilidade (git ≥ 2.9, por causa de
+`git config --name-only`) e a mais nova disponível no runner —, num runner
+Linux e num macOS (BSD `stat`/`readlink`/`mktemp`; ver
+[docs/portabilidade.md](docs/portabilidade.md)); e passa o `shellcheck` em
 `bin/git-alias`, `install.sh`, `tests/*.sh` e
 `completions/git-alias.bash` (o `.zsh` fica de fora — o `shellcheck` não
 cobre zsh). Ver [CONTRIBUTING.md](CONTRIBUTING.md).

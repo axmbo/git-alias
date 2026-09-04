@@ -10,16 +10,55 @@ permissions:
 
 jobs:
   testes:
-    name: suíte (${{ matrix.shell }})
+    name: suíte (${{ matrix.shell }}, git ${{ matrix.git-version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         shell: [dash, bash]
+        git-version: [floor, latest]
+    env:
+      # Piso de compatibilidade: dependemos de "git config --name-only"
+      # (git >= 2.9). Compilado do zero — não há pacote apt confiável para
+      # uma versão tão antiga em runners atuais. Tarball dos releases
+      # oficiais no GitHub, verificado por SHA256 (mesmo padrão do job
+      # shellcheck abaixo); bump troca versão E checksum juntos.
+      GIT_FLOOR_VERSION: 2.9.0
+      GIT_FLOOR_SHA256: dad202c1a2dec4caa2a6cab5c1ca8dc486206fd4a39585613bece8aa8c9da93b
     steps:
       - uses: actions/checkout@v4
       # dash e bash já vêm no runner (dash é o /bin/sh do Ubuntu); não há
-      # passo de instalação.
+      # passo de instalação para eles.
+      - name: Compilar git ${{ env.GIT_FLOOR_VERSION }} (piso de --name-only)
+        if: matrix.git-version == 'floor'
+        run: |
+          set -eu
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            autoconf libcurl4-openssl-dev libssl-dev libexpat1-dev zlib1g-dev
+          tarball="git-floor.tar.gz"
+          url="https://github.com/git/git/archive/refs/tags/v${GIT_FLOOR_VERSION}.tar.gz"
+          curl -fsSL -o "$tarball" "$url"
+          echo "${GIT_FLOOR_SHA256}  ${tarball}" | sha256sum -c -
+          tar -xzf "$tarball"
+          cd "git-${GIT_FLOOR_VERSION}"
+          make configure
+          ./configure --prefix="$HOME/git-floor"
+          make -j"$(nproc)" NO_TCLTK=1 NO_GETTEXT=1 NO_PERL=1
+          make install NO_TCLTK=1 NO_GETTEXT=1 NO_PERL=1
+          echo "$HOME/git-floor/bin" >>"$GITHUB_PATH"
+      - name: Confirmar a versão do git em uso
+        run: |
+          git --version
+          if [ "${{ matrix.git-version }}" = floor ]; then
+            case "$(git --version)" in
+            *" ${{ env.GIT_FLOOR_VERSION }}") ;;
+            *)
+              echo "esperava git ${{ env.GIT_FLOOR_VERSION }}, achei outra versão" >&2
+              exit 1
+              ;;
+            esac
+          fi
       - name: Rodar tests/run.sh sob ${{ matrix.shell }}
         run: SHELL_UNDER_TEST=${{ matrix.shell }} sh tests/run.sh
 
@@ -48,16 +87,12 @@ jobs:
         # (a sintaxe dele é coberta por tests/completions.sh, via zsh -n).
         run: shellcheck bin/git-alias install.sh tests/*.sh completions/git-alias.bash
 
-  # TODO (docs/roadmap.md, "Prontidão para open source" / v1.0): ampliar a
-  # matriz antes da tag v1.0.0.
-  #   - Versões de git: uma antiga (dependemos de `git config --name-only`,
-  #     git >= 2.9) e a mais nova, mais o last-wins do `git config --get`.
-  #   - Runner macOS: `stat`, `readlink` sem `-f` e `mktemp` do BSD.
-  # Job de exemplo, comentado até lá:
-  #
-  # portabilidade-macos:
-  #   name: suíte (macOS)
-  #   runs-on: macos-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - run: sh tests/run.sh
+  portabilidade-macos:
+    name: suíte (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Sem passo de instalação: o userland BSD (stat, readlink sem -f,
+      # mktemp) já vem no runner — é exatamente o que este job existe para
+      # exercitar. Ver docs/portabilidade.md.
+      - run: sh tests/run.sh
