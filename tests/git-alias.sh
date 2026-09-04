@@ -246,7 +246,16 @@ SHADOW_ERR="$("$SCRIPT" --list 2>&1 >/dev/null)"
 check "--list não confunde sombra obsoleta (arquivo + cópia no --global) com multivalor real" \
 	"nao" "$(printf '%s' "$SHADOW_ERR" | grep -q shadowed && echo sim || echo nao)"
 git config --global --unset-all alias.shadowed 2>/dev/null || true
-git config --global --unset-all --fixed-value include.path "$AFSHADOW" 2>/dev/null || true
+# "--fixed-value" (git >= 2.32) só apareceu na 1ª execução real do CI, sob
+# o piso de compatibilidade (git 2.9.0): a flag não existe nessa versão, o
+# comando falhava e o "|| true" mascarava — deixando $AFSHADOW preso no
+# include.path e contaminando todo teste seguinte que espera só $AF lá
+# (obtido "shadow.gitconfig" em vez de "aliases.gitconfig"). Só há esta
+# única entrada em include.path neste ponto (nenhum --add antes desta
+# linha no arquivo); --unset-all sem padrão de valor, o mesmo idioma já
+# usado mais abaixo (achado da 1ª execução do CI), remove sem depender da
+# flag.
+git config --global --unset-all include.path 2>/dev/null || true
 
 # Achado na 14ª revisão: sob "set -eu" em dash/bash, uma falha do "git
 # config --get" dentro do "while read" que consome a saída de
