@@ -135,18 +135,22 @@ Não commite direto em `main`: crie uma branch
 
 Convenção estilo *scoped labels* do GitLab:
 
-- `grupo::valor` — **exclusiva**: só uma label desse grupo por issue. Hoje
-  os grupos exclusivos são `priority` (`priority::p0`…`priority::p3`) e
-  `status`.
+- `grupo::valor` (dois `:`) — **exclusiva**: uma issue só carrega uma label
+  desse grupo por vez (ex.: `priority::p0`…`priority::p3`).
 - `grupo:valor` (um `:` só) — namespacing livre, **não** exclusivo.
 - label solta (`enhancement`, `bug`…) — não exclusiva.
 
+Não há lista fixa de grupos exclusivos: um grupo é exclusivo quando existe
+**alguma** label `grupo::*` cadastrada no repositório. A primeira label
+criada num grupo fixa o comportamento dele — comece por `grupo::valor` e o
+grupo é exclusivo; comece por `grupo:valor` e é namespacing livre.
+
 O workflow
 [.github/workflows/git-alias-priority-exclusive.yml](.github/workflows/git-alias-priority-exclusive.yml)
-impõe isso: ao aplicar `grupo::valor` de um grupo exclusivo, remove as
-outras labels do mesmo grupo; se alguém digitar `priority:p2` (esquecendo o
-segundo `:`), o workflow corrige para `priority::p2`. A lista de grupos
-exclusivos vive na constante `KNOWN_EXCLUSIVE_GROUPS` do próprio workflow.
+impõe isso no evento `issues.labeled`: ao aplicar `grupo::valor`, remove as
+demais labels `grupo::*` da issue; se alguém aplicar `priority:p2` (um `:`
+só) num grupo que já tem labels `::`, trata como typo e corrige para
+`priority::p2`, criando a label se preciso.
 
 ## Decisões de arquitetura (ADR)
 
