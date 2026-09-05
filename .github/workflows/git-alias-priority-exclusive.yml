@@ -1,0 +1,85 @@
+name: Enforce exclusive priority label
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  enforce-exclusive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            // Convenção estilo GitLab "scoped labels":
+            //   grupo::valor   -> exclusivo (só uma label desse grupo por issue)
+            //   grupo:valor    -> namespacing livre, não-exclusivo
+            //   label solta    -> não-exclusivo
+            //
+            // Guarda contra typo: nomes de grupo que SÃO exclusivos por convenção.
+            // Se alguém digitar com um ":" só (esquecendo o segundo), corrige pra "::".
+            const KNOWN_EXCLUSIVE_GROUPS = ['priority', 'status'];
+
+            const newLabel = context.payload.label.name;
+            const issue = context.payload.issue;
+
+            // Caso 1: typo — um ":" só, mas o nome do grupo é um dos conhecidos
+            const typoMatch = newLabel.match(/^([^:]+):([^:].*)$/);
+            if (typoMatch && KNOWN_EXCLUSIVE_GROUPS.includes(typoMatch[1])) {
+              const fixedLabel = `${typoMatch[1]}::${typoMatch[2]}`;
+
+              // garante que a label correta existe no repo
+              try {
+                await github.rest.issues.getLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: fixedLabel,
+                });
+              } catch {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: fixedLabel,
+                  color: context.payload.label.color,
+                });
+              }
+
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                name: newLabel,
+              });
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: [fixedLabel],
+              });
+
+              // segue o fluxo normal de exclusividade com o nome corrigido
+              return await enforceExclusive(fixedLabel);
+            }
+
+            // Caso 2: já é scoped label válida ("::")
+            const scopedMatch = newLabel.match(/^([^:]+)::/);
+            if (scopedMatch) {
+              return await enforceExclusive(newLabel);
+            }
+            // senão: não-exclusiva, não faz nada
+
+            async function enforceExclusive(label) {
+              const groupPrefix = label.match(/^([^:]+)::/)[1] + '::';
+              const toRemove = issue.labels
+                .map(l => l.name)
+                .filter(name => name.startsWith(groupPrefix) && name !== label);
+
+              for (const name of toRemove) {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  name,
+                });
+              }
+            }

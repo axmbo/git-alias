@@ -131,6 +131,23 @@ Não commite direto em `main`: crie uma branch
 `<tipo>/<descrição-curta-kebab-case>` (ou
 `<tipo>/<número-da-issue>-<descrição>` quando houver issue).
 
+## Labels de issue
+
+Convenção estilo *scoped labels* do GitLab:
+
+- `grupo::valor` — **exclusiva**: só uma label desse grupo por issue. Hoje
+  os grupos exclusivos são `priority` (`priority::p0`…`priority::p3`) e
+  `status`.
+- `grupo:valor` (um `:` só) — namespacing livre, **não** exclusivo.
+- label solta (`enhancement`, `bug`…) — não exclusiva.
+
+O workflow
+[.github/workflows/git-alias-priority-exclusive.yml](.github/workflows/git-alias-priority-exclusive.yml)
+impõe isso: ao aplicar `grupo::valor` de um grupo exclusivo, remove as
+outras labels do mesmo grupo; se alguém digitar `priority:p2` (esquecendo o
+segundo `:`), o workflow corrige para `priority::p2`. A lista de grupos
+exclusivos vive na constante `KNOWN_EXCLUSIVE_GROUPS` do próprio workflow.
+
 ## Decisões de arquitetura (ADR)
 
 Todo comportamento visível, processo, padrão ou decisão de arquitetura fica
