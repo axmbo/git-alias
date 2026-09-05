@@ -74,12 +74,21 @@ jobs:
   shellcheck:
     name: shellcheck
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Publicar o SARIF do shellcheck na aba Security (code scanning).
+      security-events: write
     env:
       # Versão fixa: o apt do runner e o de quem contribui divergem, e uma
       # minor nova pode ter achados diferentes. Bump é mudança deliberada —
       # trocar a versão E o checksum juntos (e a nota em CONTRIBUTING.md).
       SHELLCHECK_VERSION: v0.10.0
       SHELLCHECK_SHA256: 6c881ab0698e4e6ea235245f22832860544f17ba386442fe7e9d629f8cbedf87
+      # Converte o JSON do shellcheck em SARIF para o code scanning. Mesmo
+      # padrão: binário do release oficial, conferido por SHA256; bump troca
+      # versão E checksum juntos. (github.com/psastras/sarif-rs)
+      SHELLCHECK_SARIF_VERSION: shellcheck-sarif-v0.8.0
+      SHELLCHECK_SARIF_SHA256: da936c09925112ba0b96550acfeb8bc439c8780babca87e5ab6091cef3c539b5
     steps:
       - uses: actions/checkout@v4
       - name: Instalar shellcheck ${{ env.SHELLCHECK_VERSION }}
@@ -91,10 +100,37 @@ jobs:
           tar -xJf "$tarball"
           sudo install "shellcheck-${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck
           shellcheck --version
+      - name: Instalar shellcheck-sarif ${{ env.SHELLCHECK_SARIF_VERSION }}
+        run: |
+          bin="shellcheck-sarif-x86_64-unknown-linux-gnu"
+          url="https://github.com/psastras/sarif-rs/releases/download/${SHELLCHECK_SARIF_VERSION}/${bin}"
+          curl -fsSL -o "$bin" "$url"
+          echo "${SHELLCHECK_SARIF_SHA256}  ${bin}" | sha256sum -c -
+          sudo install "$bin" /usr/local/bin/shellcheck-sarif
       - name: Rodar shellcheck
         # completions/git-alias.zsh fica de fora: shellcheck não analisa zsh
         # (a sintaxe dele é coberta por tests/completions.sh, via zsh -n).
-        run: shellcheck bin/git-alias install.sh tests/*.sh completions/git-alias.bash
+        # Gera o JSON de qualquer jeito (para virar SARIF no passo seguinte)
+        # e preserva o status: achado do shellcheck continua falhando o job.
+        run: |
+          status=0
+          shellcheck --format=json1 \
+            bin/git-alias install.sh tests/*.sh completions/git-alias.bash \
+            > shellcheck.json || status=$?
+          shellcheck-sarif < shellcheck.json > shellcheck.sarif
+          exit "$status"
+      - name: Publicar achados do shellcheck na aba Security
+        # Roda mesmo quando o passo acima falhou — o objetivo é justamente
+        # levar os achados para o code scanning. Num PR de fork o token não
+        # tem security-events:write; o upload falha e não deve derrubar o CI
+        # de quem não pode consertar isso — o job "Rodar shellcheck" já é a
+        # trava real.
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@a35ac6e6798d72df5475948b28efb89edc2e19ca # v4.37.9
+        with:
+          sarif_file: shellcheck.sarif
+          category: shellcheck
 
   portabilidade-macos:
     name: suíte (macOS)
