@@ -1,9 +1,11 @@
 # Roteiro pré-1.0 — abrir `git alias` como código aberto
 
-> **Status deste documento:** planejamento, transitório. Cada item vira uma
-> *issue* no GitHub assim que a decisão D1 (abaixo) definir onde as issues
-> vão morar. Enquanto isso, este é o roteiro e a lista de tarefas. Origem:
-> brainstorming de 2026-08-30.
+> **Status deste documento: concluído/arquivado (2026-09-04).** Os 10 passos
+> do roteiro pré-1.0 estão feitos — `v1.0.0` publicada em
+> [axmbo/git-alias](https://github.com/axmbo/git-alias). O backlog v1.1
+> virou issues do GitHub (passo 11); trabalho novo é rastreado por lá, não
+> mais neste arquivo. Mantido só como referência histórica do
+> planejamento. Origem: brainstorming de 2026-08-30.
 
 ## Legenda
 
@@ -223,6 +225,38 @@ raiz + identificador SPDX no README (e opcionalmente cabeçalho
        (build/shellcheck-debt `c195c64`; refactor/layout-ferramenta
        `437036a`; ci/matriz-git-macos `c1ce453`; chore/templates-github
        `de157c8`), cada uma com `/code-review` até estabilizar.
-10. [ ] Tag **`v1.0.0`**, publicar.
-11. [ ] Backlog v1.1: F9 (man page), F10 (`--edit`), F11 (`--sync`), F2/adopt,
-        F2/subconjunto, F12 (`--local`).
+10. [x] Tag **`v1.0.0`**, publicar. Bump da constante + CHANGELOG em
+        `chore/release-1.0.0` (squash `c547dcd`, PR
+        [#1](https://github.com/axmbo/git-alias/pull/1)); achados da 1ª
+        execução real do CI corrigidos em `test/isola-xdg-config-home-na-suite`
+        (squash `a2aa997`, PR
+        [#2](https://github.com/axmbo/git-alias/pull/2), mergeada antes do
+        bump para o release commit já nascer com CI verde) — isolamento de
+        `XDG_CONFIG_HOME`, `--fixed-value`/`GIT_CONFIG_SYSTEM` incompatíveis
+        com o piso git 2.9.0, build do git-floor poluindo o checkout.
+        Repositório renomeado/publicado em
+        [axmbo/git-alias](https://github.com/axmbo/git-alias) (público);
+        tag anotada `v1.0.0` e
+        [Release pública](https://github.com/axmbo/git-alias/releases/tag/v1.0.0)
+        a partir dela, notas reaproveitando a seção `[1.0.0]` do
+        `CHANGELOG.md`. `git alias --version` confirmado: `1.0.0 (v1.0.0)`,
+        sem sufixo de commits à frente. CI real (matriz de git, dash/bash,
+        shellcheck, macOS) 6/6 verde em `main` após as correções — 1ª vez
+        que essa rede de segurança roda de verdade (2026-09-04). Verificação
+        manual de zsh (`zsh -n` + `git alias <TAB>` interativo) segue
+        pendente — nenhuma sessão até agora teve zsh disponível.
+11. [x] Backlog v1.1 virou issues do GitHub, agora que o issue tracker existe
+        de verdade:
+        [F9 — man page](https://github.com/axmbo/git-alias/issues/3),
+        [F10 — `--edit`](https://github.com/axmbo/git-alias/issues/4),
+        [F11 — `--sync`](https://github.com/axmbo/git-alias/issues/5),
+        [F2/adopt](https://github.com/axmbo/git-alias/issues/6),
+        [F2/subconjunto](https://github.com/axmbo/git-alias/issues/7),
+        [F12 — `--local`](https://github.com/axmbo/git-alias/issues/8). Lista
+        completa: [axmbo/git-alias/issues](https://github.com/axmbo/git-alias/issues).
+
+---
+
+Roteiro pré-1.0 concluído (passos 1–10). Este arquivo pode ser arquivado —
+ou mantido só como referência histórica — a critério de quem mantém o
+projeto; o trabalho ativo passa a ser rastreado pelas issues do GitHub.
