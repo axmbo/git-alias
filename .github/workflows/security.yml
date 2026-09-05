@@ -26,8 +26,15 @@ jobs:
     name: zizmor
     runs-on: ubuntu-latest
     permissions:
-      # Publicar o SARIF na aba Security.
+      # Publicar o SARIF na aba Security (só nos eventos "confiáveis"
+      # abaixo; em fork/Dependabot o GitHub rebaixa para leitura de toda
+      # forma).
       security-events: write
+    env:
+      # Run sem security-events: write de verdade — PR de fork ou do
+      # Dependabot, com GITHUB_TOKEN read-only. Nesses, publicar SARIF
+      # falharia; como "zizmor" é required na main, o PR travaria.
+      UNTRUSTED: ${{ github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' }}
     steps:
       # Actions fixadas por SHA + comentário de versão (o Dependabot
       # atualiza os dois juntos — ver .github/dependabot.yml). É a mesma
@@ -43,10 +50,9 @@ jobs:
           # action acima, NÃO este input — o bump do zizmor é manual, e é
           # ele que muda o conjunto de regras (ver o comentário do schedule).
           version: 1.30.0
-          # Publicar SARIF no code scanning exige security-events: write.
-          # PR de fork e do Dependabot rodam com token read-only — lá o
-          # upload falharia e, como o job "zizmor" é required na main,
-          # travaria o PR. Nesses casos cai para annotations. A action nunca
-          # falha por achado (em nenhum modo); a trava real é a required rule.
-          advanced-security: ${{ !(github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]') }}
-          annotations: true
+          # SARIF no code scanning (push, schedule, PR interno) OU annotations
+          # (fork, Dependabot) — os dois são mutuamente exclusivos no
+          # zizmor-action. A action não falha por achado em nenhum modo; a
+          # trava de verdade é a required rule "zizmor" na main.
+          advanced-security: ${{ env.UNTRUSTED != 'true' }}
+          annotations: ${{ env.UNTRUSTED == 'true' }}
