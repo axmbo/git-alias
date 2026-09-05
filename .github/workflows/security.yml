@@ -38,6 +38,15 @@ jobs:
           persist-credentials: false
       - uses: zizmorcore/zizmor-action@70fb788f84895a7701f5643d103d587e460b5c99 # v0.6.3
         with:
-          # Versão fixa do zizmor, como shellcheck e git em ci.yml — bump é
-          # mudança deliberada. Sobe junto com a action no PR do Dependabot.
+          # Versão do binário do zizmor fixada de propósito (mesma postura
+          # de shellcheck e git em ci.yml). O Dependabot atualiza o pin da
+          # action acima, NÃO este input — o bump do zizmor é manual, e é
+          # ele que muda o conjunto de regras (ver o comentário do schedule).
           version: 1.30.0
+          # Publicar SARIF no code scanning exige security-events: write.
+          # PR de fork e do Dependabot rodam com token read-only — lá o
+          # upload falharia e, como o job "zizmor" é required na main,
+          # travaria o PR. Nesses casos cai para annotations. A action nunca
+          # falha por achado (em nenhum modo); a trava real é a required rule.
+          advanced-security: ${{ !(github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]') }}
+          annotations: true
