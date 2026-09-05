@@ -31,7 +31,7 @@ jobs:
       # credentials: false não deixa o token do checkout no .git/config;
       # nenhum job aqui publica a árvore como artifact, mas é a higiene
       # padrão.
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # dash e bash já vêm no runner (dash é o /bin/sh do Ubuntu); não há
@@ -97,7 +97,7 @@ jobs:
       SHELLCHECK_SARIF_VERSION: shellcheck-sarif-v0.8.0
       SHELLCHECK_SARIF_SHA256: da936c09925112ba0b96550acfeb8bc439c8780babca87e5ab6091cef3c539b5
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Instalar shellcheck ${{ env.SHELLCHECK_VERSION }}
@@ -145,7 +145,7 @@ jobs:
     name: suíte (macOS)
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # Sem passo de instalação: o userland BSD (stat, readlink sem -f,
