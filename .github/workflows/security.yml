@@ -1,0 +1,39 @@
+name: Segurança
+
+# Análise estática de segurança que alimenta a aba Security do repositório
+# (code scanning). Hoje: zizmor, auditor dos próprios workflows de
+# .github/workflows/ — script injection, actions sem pin, permissões de
+# token largas demais. CodeQL fica de fora de propósito: não analisa shell,
+# a linguagem deste projeto.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Passe semanal mesmo sem commits — regras novas do zizmor pegam código
+    # que já estava lá.
+    - cron: "37 5 * * 1"
+
+permissions: {}
+
+jobs:
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-latest
+    permissions:
+      # Publicar o SARIF na aba Security.
+      security-events: write
+    steps:
+      # Actions fixadas por SHA + comentário de versão (o Dependabot
+      # atualiza os dois juntos — ver .github/dependabot.yml). É a mesma
+      # postura de supply chain dos downloads verificados por SHA256 em
+      # ci.yml.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: zizmorcore/zizmor-action@70fb788f84895a7701f5643d103d587e460b5c99 # v0.6.3
+        with:
+          # Versão fixa do zizmor, como shellcheck e git em ci.yml — bump é
+          # mudança deliberada. Sobe junto com a action no PR do Dependabot.
+          version: 1.30.0
