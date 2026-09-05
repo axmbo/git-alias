@@ -114,7 +114,7 @@ jobs:
         # e preserva o status: achado do shellcheck continua falhando o job.
         run: |
           status=0
-          shellcheck --format=json1 \
+          shellcheck --format=json \
             bin/git-alias install.sh tests/*.sh completions/git-alias.bash \
             > shellcheck.json || status=$?
           shellcheck-sarif < shellcheck.json > shellcheck.sarif
