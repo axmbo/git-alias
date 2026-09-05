@@ -26,7 +26,14 @@ jobs:
       GIT_FLOOR_VERSION: 2.9.0
       GIT_FLOOR_SHA256: dad202c1a2dec4caa2a6cab5c1ca8dc486206fd4a39585613bece8aa8c9da93b
     steps:
-      - uses: actions/checkout@v4
+      # Actions fixadas por SHA + comentário de versão (o Dependabot
+      # atualiza os dois juntos — ver .github/dependabot.yml). persist-
+      # credentials: false não deixa o token do checkout no .git/config;
+      # nenhum job aqui publica a árvore como artifact, mas é a higiene
+      # padrão.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
       # dash e bash já vêm no runner (dash é o /bin/sh do Ubuntu); não há
       # passo de instalação para eles.
       - name: Compilar git ${{ env.GIT_FLOOR_VERSION }} (piso de --name-only)
@@ -90,7 +97,9 @@ jobs:
       SHELLCHECK_SARIF_VERSION: shellcheck-sarif-v0.8.0
       SHELLCHECK_SARIF_SHA256: da936c09925112ba0b96550acfeb8bc439c8780babca87e5ab6091cef3c539b5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
       - name: Instalar shellcheck ${{ env.SHELLCHECK_VERSION }}
         run: |
           tarball="shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
@@ -136,7 +145,9 @@ jobs:
     name: suíte (macOS)
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
       # Sem passo de instalação: o userland BSD (stat, readlink sem -f,
       # mktemp) já vem no runner — é exatamente o que este job existe para
       # exercitar. Ver docs/portabilidade.md.
