@@ -1,0 +1,58 @@
+name: Segurança
+
+# Análise estática de segurança que alimenta a aba Security do repositório
+# (code scanning). Hoje: zizmor, auditor dos próprios workflows de
+# .github/workflows/ — script injection, actions sem pin, permissões de
+# token largas demais. CodeQL fica de fora de propósito: não analisa shell,
+# a linguagem deste projeto.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Passe semanal mesmo sem commits. O conjunto de regras é fixo (o
+    # binário do zizmor está pinado abaixo), mas as auditorias online do
+    # zizmor dependem de dados que mudam por fora: known-vulnerable-actions
+    # (GitHub Advisories), stale-action-refs, impostor-commit. Com o
+    # cooldown de 7 dias segurando o Dependabot, é aqui que um CVE novo
+    # numa action já fixada aparece antes do PR de bump.
+    - cron: "37 5 * * 1"
+
+permissions: {}
+
+jobs:
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-latest
+    permissions:
+      # Publicar o SARIF na aba Security (só nos eventos "confiáveis"
+      # abaixo; em fork/Dependabot o GitHub rebaixa para leitura de toda
+      # forma).
+      security-events: write
+    env:
+      # Run sem security-events: write de verdade — PR de fork ou do
+      # Dependabot, com GITHUB_TOKEN read-only. Nesses, publicar SARIF
+      # falharia; como "zizmor" é required na main, o PR travaria.
+      UNTRUSTED: ${{ github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' }}
+    steps:
+      # Actions fixadas por SHA + comentário de versão (o Dependabot
+      # atualiza os dois juntos — ver .github/dependabot.yml). É a mesma
+      # postura de supply chain dos downloads verificados por SHA256 em
+      # ci.yml.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: zizmorcore/zizmor-action@70fb788f84895a7701f5643d103d587e460b5c99 # v0.6.3
+        with:
+          # Versão do binário do zizmor fixada de propósito (mesma postura
+          # de shellcheck e git em ci.yml). O Dependabot atualiza o pin da
+          # action acima, NÃO este input — o bump do zizmor é manual, e é
+          # ele que muda o conjunto de regras (ver o comentário do schedule).
+          version: 1.30.0
+          # SARIF no code scanning (push, schedule, PR interno) OU annotations
+          # (fork, Dependabot) — os dois são mutuamente exclusivos no
+          # zizmor-action. A action não falha por achado em nenhum modo; a
+          # trava de verdade é a required rule "zizmor" na main.
+          advanced-security: ${{ env.UNTRUSTED != 'true' }}
+          annotations: ${{ env.UNTRUSTED == 'true' }}

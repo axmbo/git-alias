@@ -63,6 +63,34 @@ Se um aviso for falso positivo, suprima-o com um comentário
 `case` inteiro, não um ramo), com uma linha explicando o porquê. Nunca
 desabilite de forma ampla.
 
+O CI também converte a saída do `shellcheck` em SARIF e a publica na aba
+**Security › Code scanning** do repositório — mesma checagem, com histórico
+e anotação no PR. A trava que barra o merge continua sendo o job `shellcheck`
+falhar; o code scanning é só a vitrine.
+
+## Segurança
+
+Como reportar uma vulnerabilidade: [SECURITY.md](SECURITY.md). Não abra
+issue pública para falha de segurança.
+
+O que roda sozinho, tudo gratuito no plano público do GitHub:
+
+- **`shellcheck` → code scanning** — ver a seção acima.
+- **zizmor** ([.github/workflows/security.yml](.github/workflows/security.yml))
+  — audita os próprios workflows de `.github/workflows/` (injeção de
+  `${{ }}` em `run:`, actions sem pin, `permissions:` largas). Achados vão
+  para a aba Security. Versão do `zizmor` e SHA das actions são fixos, no
+  mesmo espírito dos downloads verificados de `ci.yml`.
+- **Dependabot** ([.github/dependabot.yml](.github/dependabot.yml)) — as
+  GitHub Actions dos workflows são a única classe de dependência do projeto
+  (não há manifesto de pacote). Um PR semanal agrupado sobe as versões;
+  alertas e *security updates* estão ligados nas configurações do repo.
+- **Secret scanning + push protection** e **private vulnerability
+  reporting** — ligados nas configurações do repositório, sem arquivo neste
+  repo.
+
+CodeQL fica de fora de propósito: não analisa shell.
+
 ## TDD
 
 Por padrão, todo trabalho de código segue TDD (red → green → refactor), com

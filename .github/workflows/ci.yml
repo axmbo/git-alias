@@ -26,7 +26,14 @@ jobs:
       GIT_FLOOR_VERSION: 2.9.0
       GIT_FLOOR_SHA256: dad202c1a2dec4caa2a6cab5c1ca8dc486206fd4a39585613bece8aa8c9da93b
     steps:
-      - uses: actions/checkout@v4
+      # Actions fixadas por SHA + comentário de versão (o Dependabot
+      # atualiza os dois juntos — ver .github/dependabot.yml). persist-
+      # credentials: false não deixa o token do checkout no .git/config;
+      # nenhum job aqui publica a árvore como artifact, mas é a higiene
+      # padrão.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       # dash e bash já vêm no runner (dash é o /bin/sh do Ubuntu); não há
       # passo de instalação para eles.
       - name: Compilar git ${{ env.GIT_FLOOR_VERSION }} (piso de --name-only)
@@ -74,14 +81,29 @@ jobs:
   shellcheck:
     name: shellcheck
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Publicar o SARIF do shellcheck na aba Security (code scanning).
+      security-events: write
     env:
       # Versão fixa: o apt do runner e o de quem contribui divergem, e uma
       # minor nova pode ter achados diferentes. Bump é mudança deliberada —
       # trocar a versão E o checksum juntos (e a nota em CONTRIBUTING.md).
       SHELLCHECK_VERSION: v0.10.0
       SHELLCHECK_SHA256: 6c881ab0698e4e6ea235245f22832860544f17ba386442fe7e9d629f8cbedf87
+      # Converte o JSON do shellcheck em SARIF para o code scanning. Mesmo
+      # padrão: binário do release oficial, conferido por SHA256; bump troca
+      # versão E checksum juntos. (github.com/psastras/sarif-rs)
+      SHELLCHECK_SARIF_VERSION: shellcheck-sarif-v0.8.0
+      SHELLCHECK_SARIF_SHA256: da936c09925112ba0b96550acfeb8bc439c8780babca87e5ab6091cef3c539b5
+      # Run sem security-events: write de verdade — PR de fork ou do
+      # Dependabot, com GITHUB_TOKEN read-only. Nesses, pular o upload do
+      # SARIF (mesma lógica do env homônimo em security.yml).
+      UNTRUSTED: ${{ github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Instalar shellcheck ${{ env.SHELLCHECK_VERSION }}
         run: |
           tarball="shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
@@ -91,16 +113,44 @@ jobs:
           tar -xJf "$tarball"
           sudo install "shellcheck-${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck
           shellcheck --version
+      - name: Instalar shellcheck-sarif ${{ env.SHELLCHECK_SARIF_VERSION }}
+        run: |
+          bin="shellcheck-sarif-x86_64-unknown-linux-gnu"
+          url="https://github.com/psastras/sarif-rs/releases/download/${SHELLCHECK_SARIF_VERSION}/${bin}"
+          curl -fsSL -o "$bin" "$url"
+          echo "${SHELLCHECK_SARIF_SHA256}  ${bin}" | sha256sum -c -
+          sudo install "$bin" /usr/local/bin/shellcheck-sarif
       - name: Rodar shellcheck
         # completions/git-alias.zsh fica de fora: shellcheck não analisa zsh
         # (a sintaxe dele é coberta por tests/completions.sh, via zsh -n).
-        run: shellcheck bin/git-alias install.sh tests/*.sh completions/git-alias.bash
+        # Gera o JSON de qualquer jeito (para virar SARIF no passo seguinte)
+        # e preserva o status: achado do shellcheck continua falhando o job.
+        run: |
+          status=0
+          shellcheck --format=json \
+            bin/git-alias install.sh tests/*.sh completions/git-alias.bash \
+            > shellcheck.json || status=$?
+          shellcheck-sarif < shellcheck.json > shellcheck.sarif
+          exit "$status"
+      - name: Publicar achados do shellcheck na aba Security
+        # Roda mesmo quando o passo acima falhou — o objetivo é justamente
+        # levar os achados para o code scanning. Pulado em fork/Dependabot
+        # (token read-only não publica SARIF; o job "Rodar shellcheck" já é
+        # a trava real). Nos demais eventos NÃO há continue-on-error: se a
+        # publicação prometida por este workflow falhar, o CI fica vermelho.
+        if: ${{ !cancelled() && env.UNTRUSTED != 'true' }}
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          sarif_file: shellcheck.sarif
+          category: shellcheck
 
   portabilidade-macos:
     name: suíte (macOS)
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       # Sem passo de instalação: o userland BSD (stat, readlink sem -f,
       # mktemp) já vem no runner — é exatamente o que este job existe para
       # exercitar. Ver docs/portabilidade.md.

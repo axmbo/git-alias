@@ -1,0 +1,26 @@
+# Dependabot — mantém atualizadas as GitHub Actions usadas em
+# .github/workflows/. É a única classe de dependência que este repositório
+# tem: o alvo é shell POSIX, não há manifesto de pacote (npm, pip, cargo…).
+#
+# Os *alertas* e os *security updates* do Dependabot são ligados nas
+# configurações do repositório (Settings › Advanced Security); este arquivo
+# cobre só os *version updates* — o PR de rotina que sobe a versão de uma
+# Action mesmo sem CVE.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      # Não abre PR para uma release com menos de 7 dias — janela para a
+      # comunidade pegar uma versão comprometida antes de ela entrar aqui.
+      default-days: 7
+    commit-message:
+      # Conventional Commits, como o resto do histórico (ver CONTRIBUTING.md).
+      prefix: ci
+    groups:
+      # Um PR só por rodada, em vez de um por Action.
+      github-actions:
+        patterns:
+          - "*"
