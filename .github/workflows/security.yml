@@ -11,8 +11,12 @@ on:
     branches: [main]
   pull_request:
   schedule:
-    # Passe semanal mesmo sem commits — regras novas do zizmor pegam código
-    # que já estava lá.
+    # Passe semanal mesmo sem commits. O conjunto de regras é fixo (o
+    # binário do zizmor está pinado abaixo), mas as auditorias online do
+    # zizmor dependem de dados que mudam por fora: known-vulnerable-actions
+    # (GitHub Advisories), stale-action-refs, impostor-commit. Com o
+    # cooldown de 7 dias segurando o Dependabot, é aqui que um CVE novo
+    # numa action já fixada aparece antes do PR de bump.
     - cron: "37 5 * * 1"
 
 permissions: {}
