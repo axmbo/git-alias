@@ -96,6 +96,10 @@ jobs:
       # versão E checksum juntos. (github.com/psastras/sarif-rs)
       SHELLCHECK_SARIF_VERSION: shellcheck-sarif-v0.8.0
       SHELLCHECK_SARIF_SHA256: da936c09925112ba0b96550acfeb8bc439c8780babca87e5ab6091cef3c539b5
+      # Run sem security-events: write de verdade — PR de fork ou do
+      # Dependabot, com GITHUB_TOKEN read-only. Nesses, pular o upload do
+      # SARIF (mesma lógica do env homônimo em security.yml).
+      UNTRUSTED: ${{ github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -130,12 +134,11 @@ jobs:
           exit "$status"
       - name: Publicar achados do shellcheck na aba Security
         # Roda mesmo quando o passo acima falhou — o objetivo é justamente
-        # levar os achados para o code scanning. Num PR de fork o token não
-        # tem security-events:write; o upload falha e não deve derrubar o CI
-        # de quem não pode consertar isso — o job "Rodar shellcheck" já é a
-        # trava real.
-        if: ${{ !cancelled() }}
-        continue-on-error: true
+        # levar os achados para o code scanning. Pulado em fork/Dependabot
+        # (token read-only não publica SARIF; o job "Rodar shellcheck" já é
+        # a trava real). Nos demais eventos NÃO há continue-on-error: se a
+        # publicação prometida por este workflow falhar, o CI fica vermelho.
+        if: ${{ !cancelled() && env.UNTRUSTED != 'true' }}
         uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           sarif_file: shellcheck.sarif
