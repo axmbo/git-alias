@@ -100,9 +100,14 @@ if command -v node >/dev/null 2>&1; then
 	{
 		echo '(async () => {'
 		awk 'f { sub(/^            /, ""); print; next }
-		     /script: \|[[:space:]]*$/ { f = 1 }' "$WF"
+		     /script: \|[-+]?[[:space:]]*$/ { f = 1 }' "$WF"
 		echo '})'
 	} >"$tmp"
+	# Guarda: se a extração falhar (o bloco `script:` mudar de forma), o
+	# corpo sai vazio e o `node --check` passaria em vácuo. Exige um
+	# sentinela que tem de estar no script.
+	check "extração do corpo do script: pegou algo (sentinela enforceExclusive)" \
+		"sim" "$(yn grep -Fq 'enforceExclusive' "$tmp")"
 	st=0
 	node --check "$tmp" 2>/dev/null || st=$?
 	check "node --check no corpo do script: sem erro de sintaxe" "0" "$st"

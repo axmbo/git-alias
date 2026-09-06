@@ -30,8 +30,10 @@ jobs:
             // Best-effort, não consistência forte: sem serialização entre
             // execuções (concurrency descartava eventos do meio de um
             // burst), dois relabels do mesmo grupo no mesmo segundo podem
-            // se cruzar e deixar a issue sem label do grupo; o próximo
-            // evento naquela issue conserta.
+            // se cruzar e deixar a issue sem label do grupo. Não há
+            // auto-conserto garantido: só um "labeled" posterior mirando
+            // esse mesmo grupo exclusivo reconcilia — label solta, ou de
+            // outro grupo, cai no no-op mais abaixo.
 
             const newLabel = context.payload.label.name;
             const issue = context.payload.issue;

@@ -163,7 +163,9 @@ reage a `issues.labeled`: ao aplicar `grupo::valor`, remove as demais
 evento); ao aplicar `priority:p2` (um `:` só) num grupo que já tem labels
 `::`, trata como typo e corrige para `priority::p2`, criando a label se
 preciso. É best-effort: dois relabels do mesmo grupo no mesmo segundo podem
-se cruzar — o próximo evento naquela issue reconcilia.
+se cruzar e deixar o grupo sem label; só um `labeled` posterior para esse
+mesmo grupo exclusivo reconcilia (aplicar uma label não relacionada não
+faz nada por ele).
 
 ## Decisões de arquitetura (ADR)
 
