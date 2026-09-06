@@ -27,11 +27,13 @@ Ele executa:
   está disponível) e cobertura de cada subcomando/flag de `git alias`.
 - `tests/workflows.sh` — checagem estática dos workflows de
   `.github/workflows/` com lógica em `github-script` (hoje
-  `git-alias-priority-exclusive.yml`): permissões mínimas, action pinada em
-  SHA, bloco `concurrency:` e `node --check` no corpo do `script:` quando o
+  `git-alias-priority-exclusive.yml`): permissão mínima (qualquer
+  `<escopo>: write` além de `issues` reprova), action pinada em SHA,
+  ausência de `concurrency:`, presença de `listLabelsForRepo` /
+  `listLabelsOnIssue`, e `node --check` no corpo do `script:` quando o
   `node` está disponível. Cobertura de comportamento (typo, 404, ordem
-  add-antes-de-remove) é trabalho futuro — depende de extrair o script para
-  um módulo testável.
+  add-antes-de-remove) depende de extrair o script para um módulo testável
+  — [issue #17](https://github.com/axmbo/git-alias/issues/17).
 
 O script alvo é POSIX sh e precisa continuar limpo tanto em `dash` quanto em
 `bash`. Fixe o shell de cada suíte com `SHELL_UNDER_TEST`:
