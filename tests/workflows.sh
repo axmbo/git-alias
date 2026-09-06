@@ -1,0 +1,104 @@
+#!/usr/bin/env sh
+# Checagem estática dos workflows de .github/workflows/ que carregam lógica
+# não-trivial em github-script. Hoje: git-alias-priority-exclusive.yml.
+#
+# Sem harness de GitHub Actions: trava as invariantes que uma review humana
+# deixa passar batido por serem string dentro de YAML — bloco de permissões
+# presente e mínimo, action pinada em SHA (não tag flutuante @vN), grupo
+# concurrency, e o corpo do `script:` sem erro de sintaxe JS (via
+# `node --check`, quando o node está instalado). Também fixa o redesenho da
+# exclusividade da review #16: sem KNOWN_EXCLUSIVE_GROUPS, com
+# listLabelsForRepo.
+#
+# É o próprio artefato entregue, então checa também que o discriminador
+# discrimina (um token inexistente NÃO é encontrado). A cobertura de
+# comportamento (typo, 404, ordem add-antes-de-remove) fica para a issue do
+# Nível 2.
+# Determinístico: só shell POSIX, grep e awk (node é opcional).
+
+set -eu
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+WF="$ROOT/.github/workflows/git-alias-priority-exclusive.yml"
+pass=0
+fail=0
+skip=0
+
+check() { # descrição, esperado, obtido
+	if [ "$2" = "$3" ]; then
+		pass=$((pass + 1))
+		echo "ok   - $1"
+	else
+		fail=$((fail + 1))
+		echo "FAIL - $1"
+		echo "        esperado: [$2]"
+		echo "        obtido:   [$3]"
+	fi
+}
+
+yn() { # ecoa "sim" se o comando passar, "nao" se falhar
+	if "$@"; then echo sim; else echo nao; fi
+}
+
+has() { # has <arquivo> <ere>: <ere> casa em <arquivo>?
+	grep -Eq -- "$2" "$1"
+}
+
+# --- existência ----------------------------------------------------------
+check ".github/workflows/git-alias-priority-exclusive.yml existe" \
+	"sim" "$(yn test -f "$WF")"
+
+# --- permissões: deny-all no topo, issues:write só no job -------------
+check "declara 'permissions: {}' no topo (deny-all)" \
+	"sim" "$(yn has "$WF" '^permissions:[[:space:]]*\{\}[[:space:]]*$')"
+check "o job pede 'issues: write'" \
+	"sim" "$(yn has "$WF" '^[[:space:]]+issues:[[:space:]]+write[[:space:]]*$')"
+check "não pede escrita de nenhum outro escopo" \
+	"nao" "$(yn grep -Eq '^[[:space:]]+(contents|pull-requests|actions|packages|deployments|checks|statuses|id-token|security-events):[[:space:]]+write' "$WF")"
+
+# --- supply chain: action pinada em SHA, não tag flutuante -----------
+check "actions/github-script pinada em SHA de 40 hex" \
+	"sim" "$(yn has "$WF" 'uses:[[:space:]]+actions/github-script@[0-9a-f]{40}[[:space:]]+#')"
+check "nenhum 'uses:' preso a tag flutuante @vN" \
+	"nao" "$(yn grep -Eq 'uses:[[:space:]]+[^@[:space:]]+@v[0-9]+([.][0-9]+)*([[:space:]]|$)' "$WF")"
+
+# --- concorrência: serializa 'labeled' da mesma issue ------------
+check "tem bloco 'concurrency:'" \
+	"sim" "$(yn has "$WF" '^concurrency:[[:space:]]*$')"
+
+# --- redesenho da exclusividade (review #16) --------------------------
+check "exclusividade vem das labels do repo (listLabelsForRepo)" \
+	"sim" "$(yn grep -Fq 'listLabelsForRepo' "$WF")"
+check "não sobrou a lista fixa KNOWN_EXCLUSIVE_GROUPS" \
+	"nao" "$(yn grep -Fq 'KNOWN_EXCLUSIVE_GROUPS' "$WF")"
+
+# --- sintaxe do corpo do script: (best effort: só com node) --------
+# github-script roda o corpo dentro de uma async function; para o
+# `node --check` refletir isso, envolve igual antes de checar.
+if command -v node >/dev/null 2>&1; then
+	# Nome com sufixo .js: o `node --check` recente deduz o formato do
+	# módulo pela extensão e recusa um nome sem extensão conhecida.
+	tmpd="$(mktemp -d)"
+	trap 'rm -rf "$tmpd"' EXIT
+	tmp="$tmpd/script.js"
+	{
+		echo '(async () => {'
+		awk 'f { sub(/^            /, ""); print; next }
+		     /script: \|[[:space:]]*$/ { f = 1 }' "$WF"
+		echo '})'
+	} >"$tmp"
+	st=0
+	node --check "$tmp" 2>/dev/null || st=$?
+	check "node --check no corpo do script: sem erro de sintaxe" "0" "$st"
+else
+	skip=$((skip + 1))
+	echo "skip - node não encontrado; pulando 'node --check' do script"
+fi
+
+# --- o discriminador de fato discrimina ---------------------------
+check "controle: token inexistente não é encontrado" \
+	"nao" "$(yn grep -Fq 'zzz-nao-existe-no-workflow' "$WF")"
+
+echo
+echo "pass=$pass fail=$fail skip=$skip"
+[ "$fail" -eq 0 ]

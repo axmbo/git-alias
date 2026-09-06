@@ -25,6 +25,13 @@ Ele executa:
 - `tests/completions.sh` — checagem estática dos arquivos de
   `completions/`: existência, sintaxe (`bash -n` / `zsh -n` quando o shell
   está disponível) e cobertura de cada subcomando/flag de `git alias`.
+- `tests/workflows.sh` — checagem estática dos workflows de
+  `.github/workflows/` com lógica em `github-script` (hoje
+  `git-alias-priority-exclusive.yml`): permissões mínimas, action pinada em
+  SHA, bloco `concurrency:` e `node --check` no corpo do `script:` quando o
+  `node` está disponível. Cobertura de comportamento (typo, 404, ordem
+  add-antes-de-remove) é trabalho futuro — depende de extrair o script para
+  um módulo testável.
 
 O script alvo é POSIX sh e precisa continuar limpo tanto em `dash` quanto em
 `bash`. Fixe o shell de cada suíte com `SHELL_UNDER_TEST`:
