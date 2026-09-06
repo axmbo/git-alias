@@ -27,7 +27,7 @@ Ele executa:
   está disponível) e cobertura de cada subcomando/flag de `git alias`.
 - `tests/workflows.sh` — checagem estática dos workflows de
   `.github/workflows/` com lógica em `github-script` (hoje
-  `git-alias-priority-exclusive.yml`): permissão mínima (qualquer
+  `exclusive-scoped-labels.yml`): permissão mínima (qualquer
   `<escopo>: write` além de `issues` reprova), action pinada em SHA,
   ausência de `concurrency:`, presença de `listLabelsForRepo` /
   `listLabelsOnIssue`, e `node --check` no corpo do `script:` quando o
@@ -157,7 +157,7 @@ que só tinha `grupo:valor` torna o grupo exclusivo dali em diante; apagar
 todas as `grupo::*` reverte.
 
 O workflow
-[.github/workflows/git-alias-priority-exclusive.yml](.github/workflows/git-alias-priority-exclusive.yml)
+[.github/workflows/exclusive-scoped-labels.yml](.github/workflows/exclusive-scoped-labels.yml)
 reage a `issues.labeled`: ao aplicar `grupo::valor`, remove as demais
 `grupo::*` da issue (olhando as labels atuais da issue, não o snapshot do
 evento); ao aplicar `priority:p2` (um `:` só) num grupo que já tem labels

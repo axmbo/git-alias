@@ -1,4 +1,4 @@
-name: Enforce exclusive priority label
+name: Enforce exclusive scoped labels
 
 on:
   issues:
@@ -97,25 +97,44 @@ jobs:
             // senão: não-exclusiva, não faz nada.
 
             async function enforceExclusive(label, { verifyPresent = true } = {}) {
+              // Guarda: só faz sentido para "grupo::valor". Sem "::",
+              // groupPrefix viraria 1 caractere e o laço abaixo varreria
+              // quase toda label da issue. Hoje inalcançável (os call sites
+              // garantem "::"), mas o dano de um call site futuro é grande.
+              if (!label.includes('::')) return;
               const groupPrefix = label.slice(0, label.indexOf('::') + 2);
 
-              // Lê as labels ATUAIS da issue (não o snapshot do webhook, que
-              // pode estar velho): é a única fonte confiável do que remover.
-              const current = await github.paginate(
-                github.rest.issues.listLabelsOnIssue,
-                { owner, repo, issue_number: issue.number, per_page: 100 },
-              );
-              const names = current.map((l) => l.name);
+              // Fonte da verdade: as labels ATUAIS da issue, não o snapshot
+              // do webhook.
+              let names = await currentLabelNames();
 
-              // Se a label do gatilho já saiu da issue (alguém desfez entre
-              // o evento e este run), não há o que reconciliar.
-              if (verifyPresent && !names.includes(label)) return;
+              if (verifyPresent && !names.includes(label)) {
+                // Ou o usuário desfez a label entre o evento e o run (aí é
+                // para não fazer nada), ou o GET só não replicou ainda
+                // (consistência eventual logo após o webhook). Um retry
+                // distingue os dois casos na prática.
+                await sleep(1500);
+                names = await currentLabelNames();
+                if (!names.includes(label)) return;
+              }
 
               for (const name of names) {
                 if (name.startsWith(groupPrefix) && name !== label) {
                   await removeLabelIfPresent(name);
                 }
               }
+            }
+
+            async function currentLabelNames() {
+              const current = await github.paginate(
+                github.rest.issues.listLabelsOnIssue,
+                { owner, repo, issue_number: issue.number, per_page: 100 },
+              );
+              return current.map((l) => l.name);
+            }
+
+            function sleep(ms) {
+              return new Promise((resolve) => setTimeout(resolve, ms));
             }
 
             // Corrida com outra execução pode remover a label antes de nós;

@@ -501,7 +501,7 @@ O runner roda todas as suítes de `tests/`:
   (uma regressão que tire um subcomando da completion quebra a suíte).
 - `tests/workflows.sh` — checagem estática dos workflows de
   `.github/workflows/` com lógica em `github-script` (hoje
-  `git-alias-priority-exclusive.yml`): permissões mínimas, action pinada em
+  `exclusive-scoped-labels.yml`): permissões mínimas, action pinada em
   SHA e `node --check` no corpo do `script:` quando o `node` está
   disponível.
 

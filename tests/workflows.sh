@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 # Checagem estática dos workflows de .github/workflows/ que carregam lógica
-# não-trivial em github-script. Hoje: git-alias-priority-exclusive.yml.
+# não-trivial em github-script. Hoje: exclusive-scoped-labels.yml.
 #
 # Sem harness de GitHub Actions: trava as invariantes que uma review humana
 # deixa passar batido por serem string dentro de YAML — bloco de permissões
@@ -21,7 +21,7 @@
 set -eu
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-WF="$ROOT/.github/workflows/git-alias-priority-exclusive.yml"
+WF="$ROOT/.github/workflows/exclusive-scoped-labels.yml"
 pass=0
 fail=0
 skip=0
@@ -47,7 +47,7 @@ has() { # has <arquivo> <ere>: <ere> casa em <arquivo>?
 }
 
 # --- existência ----------------------------------------------------------
-check ".github/workflows/git-alias-priority-exclusive.yml existe" \
+check ".github/workflows/exclusive-scoped-labels.yml existe" \
 	"sim" "$(yn test -f "$WF")"
 
 # --- permissões: deny-all no topo, issues:write só no job -------------
@@ -75,9 +75,10 @@ check "nenhum 'uses:' preso a tag flutuante @vN" \
 # --- concorrência: NÃO reintroduzir 'concurrency:' -----------------
 # A fila de profundidade 1 do Actions descarta eventos do meio de um burst
 # de labels (review #16); a reconciliação por estado atual dispensa
-# serialização.
+# serialização. Pega em qualquer nível (topo ou job) e com qualquer valor
+# (vazio, `{}` ou escalar inline) — não só a chave solta no topo.
 check "não reintroduz 'concurrency:'" \
-	"nao" "$(yn has "$WF" '^concurrency:[[:space:]]*$')"
+	"nao" "$(yn grep -Eq '^[[:space:]]*concurrency:' "$WF")"
 
 # --- redesenho da exclusividade (review #16) --------------------------
 check "exclusividade vem das labels do repo (listLabelsForRepo)" \
