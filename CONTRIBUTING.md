@@ -144,20 +144,24 @@ Convenção estilo *scoped labels* do GitLab:
 
 - `grupo::valor` (dois `:`) — **exclusiva**: uma issue só carrega uma label
   desse grupo por vez (ex.: `priority::p0`…`priority::p3`).
-- `grupo:valor` (um `:` só) — namespacing livre, **não** exclusivo.
+- `grupo:valor` (um `:` só), num grupo sem nenhuma label `::` — namespacing
+  livre, **não** exclusivo.
 - label solta (`enhancement`, `bug`…) — não exclusiva.
 
-Não há lista fixa de grupos exclusivos: um grupo é exclusivo quando existe
-**alguma** label `grupo::*` cadastrada no repositório. A primeira label
-criada num grupo fixa o comportamento dele — comece por `grupo::valor` e o
-grupo é exclusivo; comece por `grupo:valor` e é namespacing livre.
+Não há lista fixa de grupos exclusivos, e não é a primeira label que
+decide: um grupo é exclusivo **enquanto existir** ao menos uma label
+`grupo::*` cadastrada no repositório. Criar a primeira `grupo::*` num grupo
+que só tinha `grupo:valor` torna o grupo exclusivo dali em diante; apagar
+todas as `grupo::*` reverte.
 
 O workflow
 [.github/workflows/git-alias-priority-exclusive.yml](.github/workflows/git-alias-priority-exclusive.yml)
-impõe isso no evento `issues.labeled`: ao aplicar `grupo::valor`, remove as
-demais labels `grupo::*` da issue; se alguém aplicar `priority:p2` (um `:`
-só) num grupo que já tem labels `::`, trata como typo e corrige para
-`priority::p2`, criando a label se preciso.
+reage a `issues.labeled`: ao aplicar `grupo::valor`, remove as demais
+`grupo::*` da issue (olhando as labels atuais da issue, não o snapshot do
+evento); ao aplicar `priority:p2` (um `:` só) num grupo que já tem labels
+`::`, trata como typo e corrige para `priority::p2`, criando a label se
+preciso. É best-effort: dois relabels do mesmo grupo no mesmo segundo podem
+se cruzar — o próximo evento naquela issue reconcilia.
 
 ## Decisões de arquitetura (ADR)
 

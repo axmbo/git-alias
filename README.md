@@ -499,6 +499,11 @@ O runner roda todas as suítes de `tests/`:
   `completions/`: existem, têm sintaxe válida (`bash -n` / `zsh -n` quando
   o shell está disponível) e citam cada subcomando e flag de `git alias`
   (uma regressão que tire um subcomando da completion quebra a suíte).
+- `tests/workflows.sh` — checagem estática dos workflows de
+  `.github/workflows/` com lógica em `github-script` (hoje
+  `git-alias-priority-exclusive.yml`): permissões mínimas, action pinada em
+  SHA e `node --check` no corpo do `script:` quando o `node` está
+  disponível.
 
 O script é POSIX sh e precisa passar tanto em `dash` quanto em `bash`. Para
 fixar o shell de cada suíte:

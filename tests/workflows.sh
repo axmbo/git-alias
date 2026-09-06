@@ -4,11 +4,13 @@
 #
 # Sem harness de GitHub Actions: trava as invariantes que uma review humana
 # deixa passar batido por serem string dentro de YAML — bloco de permissões
-# presente e mínimo, action pinada em SHA (não tag flutuante @vN), grupo
-# concurrency, e o corpo do `script:` sem erro de sintaxe JS (via
-# `node --check`, quando o node está instalado). Também fixa o redesenho da
-# exclusividade da review #16: sem KNOWN_EXCLUSIVE_GROUPS, com
-# listLabelsForRepo.
+# presente e mínimo, action pinada em SHA (não tag flutuante @vN), e o corpo
+# do `script:` sem erro de sintaxe JS (via `node --check`, quando o node
+# está instalado). Também fixa decisões da review #16: sem
+# KNOWN_EXCLUSIVE_GROUPS, exclusividade a partir de listLabelsForRepo,
+# reconciliação pelo estado atual da issue (listLabelsOnIssue) e nada de
+# `concurrency:` (a fila de profundidade 1 do Actions descartava eventos do
+# meio de um burst de labels).
 #
 # É o próprio artefato entregue, então checa também que o discriminador
 # discrimina (um token inexistente NÃO é encontrado). A cobertura de
@@ -53,8 +55,16 @@ check "declara 'permissions: {}' no topo (deny-all)" \
 	"sim" "$(yn has "$WF" '^permissions:[[:space:]]*\{\}[[:space:]]*$')"
 check "o job pede 'issues: write'" \
 	"sim" "$(yn has "$WF" '^[[:space:]]+issues:[[:space:]]+write[[:space:]]*$')"
-check "não pede escrita de nenhum outro escopo" \
-	"nao" "$(yn grep -Eq '^[[:space:]]+(contents|pull-requests|actions|packages|deployments|checks|statuses|id-token|security-events):[[:space:]]+write' "$WF")"
+# Genérico de propósito: qualquer chave `<escopo>: write` indentada cujo
+# nome não seja `issues` reprova — não uma lista de escopos conhecidos, que
+# esqueceria os que o GitHub criar depois (attestations, models, pages…).
+if grep -E '^[[:space:]]+[a-z_-]+:[[:space:]]+write' "$WF" |
+	grep -Evq '^[[:space:]]+issues:[[:space:]]+write[[:space:]]*$'; then
+	outro_write=sim
+else
+	outro_write=nao
+fi
+check "não pede escrita de nenhum escopo além de 'issues'" "nao" "$outro_write"
 
 # --- supply chain: action pinada em SHA, não tag flutuante -----------
 check "actions/github-script pinada em SHA de 40 hex" \
@@ -62,13 +72,18 @@ check "actions/github-script pinada em SHA de 40 hex" \
 check "nenhum 'uses:' preso a tag flutuante @vN" \
 	"nao" "$(yn grep -Eq 'uses:[[:space:]]+[^@[:space:]]+@v[0-9]+([.][0-9]+)*([[:space:]]|$)' "$WF")"
 
-# --- concorrência: serializa 'labeled' da mesma issue ------------
-check "tem bloco 'concurrency:'" \
-	"sim" "$(yn has "$WF" '^concurrency:[[:space:]]*$')"
+# --- concorrência: NÃO reintroduzir 'concurrency:' -----------------
+# A fila de profundidade 1 do Actions descarta eventos do meio de um burst
+# de labels (review #16); a reconciliação por estado atual dispensa
+# serialização.
+check "não reintroduz 'concurrency:'" \
+	"nao" "$(yn has "$WF" '^concurrency:[[:space:]]*$')"
 
 # --- redesenho da exclusividade (review #16) --------------------------
 check "exclusividade vem das labels do repo (listLabelsForRepo)" \
 	"sim" "$(yn grep -Fq 'listLabelsForRepo' "$WF")"
+check "reconcilia pelo estado atual da issue (listLabelsOnIssue)" \
+	"sim" "$(yn grep -Fq 'listLabelsOnIssue' "$WF")"
 check "não sobrou a lista fixa KNOWN_EXCLUSIVE_GROUPS" \
 	"nao" "$(yn grep -Fq 'KNOWN_EXCLUSIVE_GROUPS' "$WF")"
 
