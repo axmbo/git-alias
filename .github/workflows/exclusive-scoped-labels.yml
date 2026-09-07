@@ -1,0 +1,167 @@
+name: Enforce exclusive scoped labels
+
+on:
+  issues:
+    types: [labeled]
+
+# Nega tudo por padrão; o job pede só o que usa (mesmo padrão de
+# security.yml / ci.yml).
+permissions: {}
+
+jobs:
+  enforce-exclusive:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            // Convenção estilo GitLab "scoped labels":
+            //   grupo::valor   -> exclusivo (só uma label desse grupo por issue)
+            //   grupo:valor    -> namespacing livre, não-exclusivo
+            //   label solta    -> não-exclusivo
+            //
+            // Não há lista fixa: um grupo é exclusivo ENQUANTO existir ao
+            // menos uma label "grupo::*" no repo. Isso é reavaliado a cada
+            // execução — criar a 1ª "grupo::*" torna o grupo exclusivo,
+            // apagar todas reverte.
+            //
+            // Best-effort, não consistência forte: sem serialização entre
+            // execuções (concurrency descartava eventos do meio de um
+            // burst), dois relabels do mesmo grupo no mesmo segundo podem
+            // se cruzar e deixar a issue SEM label do grupo; e, raramente,
+            // lag de réplica de leitura além do retry lá embaixo pode
+            // deixar DUAS. Não há auto-conserto garantido: só um "labeled"
+            // posterior mirando esse mesmo grupo exclusivo reconcilia —
+            // label solta, ou de outro grupo, cai no no-op mais abaixo.
+
+            const newLabel = context.payload.label.name;
+            const issue = context.payload.issue;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            // Caso 1: já é scoped label ("::") — o próprio nome declara o
+            // grupo como exclusivo.
+            if (/^[^:]+::/.test(newLabel)) {
+              return await enforceExclusive(newLabel);
+            }
+
+            // Caso 2: um ":" só. Se o grupo já tem alguma "grupo::*" no
+            // repo, trata "grupo:valor" como typo de "grupo::valor".
+            const typoMatch = newLabel.match(/^([^:]+):([^:]+)$/);
+            if (typoMatch) {
+              const group = typoMatch[1].trim();
+              const value = typoMatch[2].trim();
+              if (!group || !value) return;
+
+              // Custo do design sem lista fixa: todo "grupo:valor" paga
+              // esta enumeração, mesmo em grupo que nunca terá "::".
+              const repoLabels = await github.paginate(
+                github.rest.issues.listLabelsForRepo,
+                { owner, repo, per_page: 100 },
+              );
+              if (!repoLabels.some((l) => l.name.startsWith(`${group}::`))) {
+                return; // namespacing livre — nada a fazer
+              }
+
+              const fixedLabel = `${group}::${value}`;
+
+              // garante que a label corrigida existe no repo
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name: fixedLabel });
+              } catch (err) {
+                if (err.status !== 404) throw err;
+                try {
+                  await github.rest.issues.createLabel({
+                    owner,
+                    repo,
+                    name: fixedLabel,
+                    color: context.payload.label.color,
+                  });
+                } catch (err2) {
+                  if (err2.status !== 422) throw err2;
+                  // 422 tanto é "outra execução criou primeiro" (ok)
+                  // quanto validação (nome > 50 chars, cor inválida). Só
+                  // engole se a label de fato passou a existir; senão
+                  // propaga o 422 real.
+                  try {
+                    await github.rest.issues.getLabel({ owner, repo, name: fixedLabel });
+                  } catch {
+                    throw err2;
+                  }
+                }
+              }
+
+              // Adiciona a corrigida ANTES de remover a com typo: se algo
+              // falhar no meio, a issue fica com as duas, nunca sem nenhuma.
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: issue.number,
+                labels: [fixedLabel],
+              });
+              await removeLabelIfPresent(newLabel);
+
+              return await enforceExclusive(fixedLabel, { verifyPresent: false });
+            }
+
+            // senão: não-exclusiva, não faz nada.
+
+            async function enforceExclusive(label, { verifyPresent = true } = {}) {
+              // Guarda: precisa ser "grupo::valor" com os dois lados
+              // não-vazios. Sem isso (sem "::", "::x", ou "x::" de valor
+              // vazio) groupPrefix ficaria degenerado e o laço varreria o
+              // grupo inteiro da issue. O Caso 1 já barra "::x", mas "x::"
+              // (label criada literalmente assim) chega aqui.
+              const sep = label.indexOf('::');
+              if (sep < 1 || sep + 2 >= label.length) return;
+              const groupPrefix = label.slice(0, sep + 2);
+
+              // Fonte da verdade: as labels ATUAIS da issue, não o snapshot
+              // do webhook.
+              let names = await currentLabelNames();
+
+              if (verifyPresent && !names.includes(label)) {
+                // Ou o usuário desfez a label entre o evento e o run (aí é
+                // para não fazer nada), ou o GET só não replicou ainda
+                // (consistência eventual logo após o webhook). Um retry
+                // distingue os dois casos na prática.
+                await sleep(1500);
+                names = await currentLabelNames();
+                if (!names.includes(label)) return;
+              }
+
+              for (const name of names) {
+                if (name.startsWith(groupPrefix) && name !== label) {
+                  await removeLabelIfPresent(name);
+                }
+              }
+            }
+
+            async function currentLabelNames() {
+              const current = await github.paginate(
+                github.rest.issues.listLabelsOnIssue,
+                { owner, repo, issue_number: issue.number, per_page: 100 },
+              );
+              return current.map((l) => l.name);
+            }
+
+            function sleep(ms) {
+              return new Promise((resolve) => setTimeout(resolve, ms));
+            }
+
+            // Corrida com outra execução pode remover a label antes de nós;
+            // 404 aqui só significa "já não está na issue".
+            async function removeLabelIfPresent(name) {
+              try {
+                await github.rest.issues.removeLabel({
+                  owner,
+                  repo,
+                  issue_number: issue.number,
+                  name,
+                });
+              } catch (err) {
+                if (err.status !== 404) throw err;
+              }
+            }

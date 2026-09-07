@@ -25,6 +25,15 @@ Ele executa:
 - `tests/completions.sh` — checagem estática dos arquivos de
   `completions/`: existência, sintaxe (`bash -n` / `zsh -n` quando o shell
   está disponível) e cobertura de cada subcomando/flag de `git alias`.
+- `tests/workflows.sh` — checagem estática dos workflows de
+  `.github/workflows/` com lógica em `github-script` (hoje
+  `exclusive-scoped-labels.yml`): permissão mínima (qualquer
+  `<escopo>: write` além de `issues` reprova), action pinada em SHA,
+  ausência de `concurrency:`, presença de `listLabelsForRepo` /
+  `listLabelsOnIssue`, e `node --check` no corpo do `script:` quando o
+  `node` está disponível. Cobertura de comportamento (typo, 404, ordem
+  add-antes-de-remove) depende de extrair o script para um módulo testável
+  — [issue #17](https://github.com/axmbo/git-alias/issues/17).
 
 O script alvo é POSIX sh e precisa continuar limpo tanto em `dash` quanto em
 `bash`. Fixe o shell de cada suíte com `SHELL_UNDER_TEST`:
@@ -130,6 +139,34 @@ ele passa **e** que falharia na condição que deveria pegar.
 Não commite direto em `main`: crie uma branch
 `<tipo>/<descrição-curta-kebab-case>` (ou
 `<tipo>/<número-da-issue>-<descrição>` quando houver issue).
+
+## Labels de issue
+
+Convenção estilo *scoped labels* do GitLab:
+
+- `grupo::valor` (dois `:`) — **exclusiva**: uma issue só carrega uma label
+  desse grupo por vez (ex.: `priority::p0`…`priority::p3`).
+- `grupo:valor` (um `:` só), num grupo sem nenhuma label `::` — namespacing
+  livre, **não** exclusivo.
+- label solta (`enhancement`, `bug`…) — não exclusiva.
+
+Não há lista fixa de grupos exclusivos, e não é a primeira label que
+decide: um grupo é exclusivo **enquanto existir** ao menos uma label
+`grupo::*` cadastrada no repositório. Criar a primeira `grupo::*` num grupo
+que só tinha `grupo:valor` torna o grupo exclusivo dali em diante; apagar
+todas as `grupo::*` reverte.
+
+O workflow
+[.github/workflows/exclusive-scoped-labels.yml](.github/workflows/exclusive-scoped-labels.yml)
+reage a `issues.labeled`: ao aplicar `grupo::valor`, remove as demais
+`grupo::*` da issue (olhando as labels atuais da issue, não o snapshot do
+evento); ao aplicar `priority:p2` (um `:` só) num grupo que já tem labels
+`::`, trata como typo e corrige para `priority::p2`, criando a label se
+preciso. É best-effort: um cruzamento de relabels do mesmo grupo no mesmo
+segundo pode deixar o grupo sem label, e — raramente — lag de replicação
+pode deixar duas; em qualquer dos casos, só um `labeled` posterior para
+esse mesmo grupo exclusivo reconcilia (aplicar uma label não relacionada
+não faz nada por ele).
 
 ## Decisões de arquitetura (ADR)
 
