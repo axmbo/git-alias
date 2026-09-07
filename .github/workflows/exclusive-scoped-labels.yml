@@ -22,6 +22,9 @@ jobs:
             //   grupo:valor    -> namespacing livre, não-exclusivo
             //   label solta    -> não-exclusivo
             //
+            // Um nível só: em "a::b::c" o grupo é "a" (o 1º "::"); aninhar
+            // não é suportado.
+            //
             // Não há lista fixa: um grupo é exclusivo ENQUANTO existir ao
             // menos uma label "grupo::*" no repo. Isso é reavaliado a cada
             // execução — criar a 1ª "grupo::*" torna o grupo exclusivo,
@@ -29,10 +32,11 @@ jobs:
             //
             // Best-effort, não consistência forte: sem serialização entre
             // execuções (concurrency descartava eventos do meio de um
-            // burst), dois relabels do mesmo grupo no mesmo segundo podem
-            // se cruzar e deixar a issue SEM label do grupo; e, raramente,
-            // lag de réplica de leitura além do retry lá embaixo pode
-            // deixar DUAS. Não há auto-conserto garantido: só um "labeled"
+            // burst), duas escritas do mesmo grupo no mesmo segundo (dois
+            // relabels, ou uma criação de issue já com as duas) podem se
+            // cruzar e deixar a issue SEM label do grupo; e, raramente, lag
+            // de réplica de leitura além do retry lá embaixo pode deixar
+            // DUAS. Não há auto-conserto garantido: só um "labeled"
             // posterior mirando esse mesmo grupo exclusivo reconcilia —
             // label solta, ou de outro grupo, cai no no-op mais abaixo.
 
@@ -54,6 +58,11 @@ jobs:
               const group = typoMatch[1].trim();
               const value = typoMatch[2].trim();
               if (!group || !value) return;
+
+              // O usuário pode ter desfeito o "grupo:valor" entre o evento
+              // e este run (mesmo motivo do verifyPresent no Caso 1). Se
+              // já não está na issue, não há typo a corrigir.
+              if (!(await currentLabelNames()).includes(newLabel)) return;
 
               // Custo do design sem lista fixa: todo "grupo:valor" paga
               // esta enumeração, mesmo em grupo que nunca terá "::".

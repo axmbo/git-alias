@@ -145,7 +145,8 @@ Não commite direto em `main`: crie uma branch
 Convenção estilo *scoped labels* do GitLab:
 
 - `grupo::valor` (dois `:`) — **exclusiva**: uma issue só carrega uma label
-  desse grupo por vez (ex.: `priority::p0`…`priority::p3`).
+  desse grupo por vez (ex.: `priority::p0`…`priority::p3`). Um nível só: em
+  `a::b::c` o grupo é `a` (o primeiro `::`); aninhar não é suportado.
 - `grupo:valor` (um `:` só), num grupo sem nenhuma label `::` — namespacing
   livre, **não** exclusivo.
 - label solta (`enhancement`, `bug`…) — não exclusiva.
@@ -162,10 +163,11 @@ reage a `issues.labeled`: ao aplicar `grupo::valor`, remove as demais
 `grupo::*` da issue (olhando as labels atuais da issue, não o snapshot do
 evento); ao aplicar `priority:p2` (um `:` só) num grupo que já tem labels
 `::`, trata como typo e corrige para `priority::p2`, criando a label se
-preciso. É best-effort: um cruzamento de relabels do mesmo grupo no mesmo
-segundo pode deixar o grupo sem label, e — raramente — lag de replicação
-pode deixar duas; em qualquer dos casos, só um `labeled` posterior para
-esse mesmo grupo exclusivo reconcilia (aplicar uma label não relacionada
+preciso. É best-effort: duas escritas do mesmo grupo no mesmo segundo (dois
+relabels, ou uma criação de issue já com as duas) podem se cruzar e deixar
+o grupo sem label, e — raramente — lag de replicação pode deixar duas; em
+qualquer dos casos, só um `labeled` posterior para esse mesmo grupo
+exclusivo reconcilia (aplicar uma label não relacionada
 não faz nada por ele).
 
 ## Decisões de arquitetura (ADR)
