@@ -61,9 +61,10 @@ fi
 check "o job pede 'issues: write'" "sim" "$pede_issues"
 # Robusto a forma: extrai só as regiões `permissions:` (a linha + o bloco
 # mais indentado que a segue), normaliza aspas/comentário, e varre
-# `<escopo>: write` / `write-all` / `read-all` — cobre bloco, escalar e
-# flow-mapping. A única concessão aceitável é `issues: write`. Escopar
-# evita falso-FAIL por um `x: write` no corpo do `script:`.
+# `<escopo>: write|read` / `write-all` / `read-all` — cobre bloco, escalar
+# e flow-mapping. A única concessão aceitável é `issues: write`; qualquer
+# outra (inclusive um `contents: read`) reprova, forçando decisão
+# consciente. Escopar evita falso-FAIL por um `x: write` no `script:`.
 perm_region=$(awk '
 	/^[[:space:]]*permissions:/ { print; ind = match($0, /[^[:space:]]/); inb = 1; next }
 	inb && /^[[:space:]]*$/ { next }
@@ -71,7 +72,7 @@ perm_region=$(awk '
 	inb { inb = 0 }
 ' "$WF")
 perm_bad=$(printf '%s\n' "$perm_region" | sed 's/#.*//' | tr -d "\"'" |
-	grep -oE '[a-z_-]+:[[:space:]]*write|write-all|read-all' |
+	grep -oE '[a-z_-]+:[[:space:]]*(write|read)|write-all|read-all' |
 	grep -vE '^issues:[[:space:]]*write$' | grep -c . || true)
 check "nenhuma concessão de permissão além de 'issues: write'" "0" "$perm_bad"
 
