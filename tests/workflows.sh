@@ -59,16 +59,19 @@ else
 	pede_issues=nao
 fi
 check "o job pede 'issues: write'" "sim" "$pede_issues"
-# Robusto a forma: normaliza aspas e comentário à direita, varre TODO
-# `<escopo>: write` e `write-all`/`read-all` do arquivo — bloco (`  x: write`),
-# escalar (`permissions: write-all`) ou flow-mapping (`{ x: write }`). A
-# única concessão aceitável é `issues: write`. O corpo do `script:` não
-# contém esses tokens.
-perm_grants=$(
-	sed 's/#.*//' "$WF" | tr -d "\"'" |
-		grep -oE '[a-z_-]+:[[:space:]]*write|write-all|read-all' || true
-)
-perm_bad=$(printf '%s\n' "$perm_grants" |
+# Robusto a forma: extrai só as regiões `permissions:` (a linha + o bloco
+# mais indentado que a segue), normaliza aspas/comentário, e varre
+# `<escopo>: write` / `write-all` / `read-all` — cobre bloco, escalar e
+# flow-mapping. A única concessão aceitável é `issues: write`. Escopar
+# evita falso-FAIL por um `x: write` no corpo do `script:`.
+perm_region=$(awk '
+	/^[[:space:]]*permissions:/ { print; ind = match($0, /[^[:space:]]/); inb = 1; next }
+	inb && /^[[:space:]]*$/ { next }
+	inb && match($0, /[^[:space:]]/) > ind { print; next }
+	inb { inb = 0 }
+' "$WF")
+perm_bad=$(printf '%s\n' "$perm_region" | sed 's/#.*//' | tr -d "\"'" |
+	grep -oE '[a-z_-]+:[[:space:]]*write|write-all|read-all' |
 	grep -vE '^issues:[[:space:]]*write$' | grep -c . || true)
 check "nenhuma concessão de permissão além de 'issues: write'" "0" "$perm_bad"
 
@@ -117,10 +120,13 @@ if command -v node >/dev/null 2>&1; then
 		echo '})'
 	} >"$tmp"
 	# Guarda: se a extração falhar (o bloco `script:` mudar de forma), o
-	# corpo sai vazio e o `node --check` passaria em vácuo. Exige um
-	# sentinela que tem de estar no script.
-	check "extração do corpo do script: pegou algo (sentinela enforceExclusive)" \
+	# corpo sai vazio/truncado e o `node --check` passaria em vácuo. Exige
+	# um sentinela no começo E um no fim (a última função do script), então
+	# um corte no meio é pego.
+	check "extração do corpo do script: pegou o começo (sentinela enforceExclusive)" \
 		"sim" "$(yn grep -Fq 'enforceExclusive' "$tmp")"
+	check "extração do corpo do script: pegou até o fim (sentinela removeLabelIfPresent)" \
+		"sim" "$(yn grep -Fq 'function removeLabelIfPresent' "$tmp")"
 	st=0
 	node --check "$tmp" 2>/dev/null || st=$?
 	check "node --check no corpo do script: sem erro de sintaxe" "0" "$st"

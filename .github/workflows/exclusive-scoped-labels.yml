@@ -19,7 +19,9 @@ jobs:
           script: |
             // Convenção estilo GitLab "scoped labels":
             //   grupo::valor   -> exclusivo (só uma label desse grupo por issue)
-            //   grupo:valor    -> namespacing livre, não-exclusivo
+            //   grupo:valor    -> namespacing livre ENQUANTO o grupo não
+            //                     tiver nenhuma "grupo::*"; a partir daí é
+            //                     tratado como typo e reescrito (Caso 2)
             //   label solta    -> não-exclusivo
             //
             // Um nível só: em "a::b::c" o grupo é "a" (o 1º "::"); aninhar
@@ -60,9 +62,10 @@ jobs:
               if (!group || !value) return;
 
               // O usuário pode ter desfeito o "grupo:valor" entre o evento
-              // e este run (mesmo motivo do verifyPresent no Caso 1). Se
-              // já não está na issue, não há typo a corrigir.
-              if (!(await currentLabelNames()).includes(newLabel)) return;
+              // e este run (mesmo motivo do verifyPresent no Caso 1), ou o
+              // GET ainda não replicou — o helper faz 1 retry. Se mesmo
+              // assim não está na issue, não há typo a corrigir.
+              if (!(await labelNamesWaitingFor(newLabel)).includes(newLabel)) return;
 
               // Custo do design sem lista fixa: todo "grupo:valor" paga
               // esta enumeração, mesmo em grupo que nunca terá "::".
@@ -103,8 +106,9 @@ jobs:
                   // propaga o 422 real.
                   try {
                     await github.rest.issues.getLabel({ owner, repo, name: fixedLabel });
-                  } catch {
-                    throw err2;
+                  } catch (err3) {
+                    if (err3.status === 404) throw err2; // não existe -> 422 era validação
+                    throw err3; // 403/5xx/rate-limit: a causa real
                   }
                 }
               }
@@ -139,18 +143,14 @@ jobs:
               const target = label.toLowerCase();
 
               // Fonte da verdade: as labels ATUAIS da issue, não o snapshot
-              // do webhook.
-              let names = await currentLabelNames();
+              // do webhook. Com verifyPresent, o helper tolera o lag de
+              // replicação — se a label do gatilho não aparecer, 1 retry
+              // distingue "usuário desfez" de "ainda não replicou".
+              const names = verifyPresent
+                ? await labelNamesWaitingFor(label)
+                : await currentLabelNames();
 
-              if (verifyPresent && !names.includes(label)) {
-                // Ou o usuário desfez a label entre o evento e o run (aí é
-                // para não fazer nada), ou o GET só não replicou ainda
-                // (consistência eventual logo após o webhook). Um retry
-                // distingue os dois casos na prática.
-                await sleep(1500);
-                names = await currentLabelNames();
-                if (!names.includes(label)) return;
-              }
+              if (verifyPresent && !names.includes(label)) return;
 
               for (const name of names) {
                 const n = name.toLowerCase();
@@ -166,6 +166,18 @@ jobs:
                 { owner, repo, issue_number: issue.number, per_page: 100 },
               );
               return current.map((l) => l.name);
+            }
+
+            // GET das labels da issue; se `wanted` não aparecer, 1 retry
+            // após o lag de replicação (consistência eventual logo depois
+            // do webhook). Usado por Caso 1 e Caso 2.
+            async function labelNamesWaitingFor(wanted) {
+              let names = await currentLabelNames();
+              if (!names.includes(wanted)) {
+                await sleep(1500);
+                names = await currentLabelNames();
+              }
+              return names;
             }
 
             function sleep(ms) {
