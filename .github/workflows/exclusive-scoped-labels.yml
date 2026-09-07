@@ -70,7 +70,14 @@ jobs:
                 github.rest.issues.listLabelsForRepo,
                 { owner, repo, per_page: 100 },
               );
-              if (!repoLabels.some((l) => l.name.startsWith(`${group}::`))) {
+              // Grupo exclusivo = existe uma "grupo::valor" DE FATO (valor
+              // não-vazio) no repo. Case-insensitive: o GitHub trata nomes
+              // de label sem distinção de caixa.
+              const pfx = `${group}::`.toLowerCase();
+              if (!repoLabels.some((l) => {
+                const n = l.name.toLowerCase();
+                return n.startsWith(pfx) && n.length > pfx.length;
+              })) {
                 return; // namespacing livre — nada a fazer
               }
 
@@ -125,7 +132,11 @@ jobs:
               // (label criada literalmente assim) chega aqui.
               const sep = label.indexOf('::');
               if (sep < 1 || sep + 2 >= label.length) return;
-              const groupPrefix = label.slice(0, sep + 2);
+              // Case-insensitive: "Priority::p0" e "priority::p1" são o
+              // mesmo grupo lógico para o GitHub. Compara em minúsculas,
+              // remove pela grafia real.
+              const groupPrefix = label.slice(0, sep + 2).toLowerCase();
+              const target = label.toLowerCase();
 
               // Fonte da verdade: as labels ATUAIS da issue, não o snapshot
               // do webhook.
@@ -142,7 +153,8 @@ jobs:
               }
 
               for (const name of names) {
-                if (name.startsWith(groupPrefix) && name !== label) {
+                const n = name.toLowerCase();
+                if (n.startsWith(groupPrefix) && n !== target) {
                   await removeLabelIfPresent(name);
                 }
               }

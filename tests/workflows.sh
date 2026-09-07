@@ -66,7 +66,7 @@ check "o job pede 'issues: write'" "sim" "$pede_issues"
 # contém esses tokens.
 perm_grants=$(
 	sed 's/#.*//' "$WF" | tr -d "\"'" |
-		grep -oE '[a-z_-]+:[[:space:]]*write|write-all|read-all'
+		grep -oE '[a-z_-]+:[[:space:]]*write|write-all|read-all' || true
 )
 perm_bad=$(printf '%s\n' "$perm_grants" |
 	grep -vE '^issues:[[:space:]]*write$' | grep -c . || true)
