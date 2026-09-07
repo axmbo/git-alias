@@ -109,12 +109,14 @@ jobs:
             // senão: não-exclusiva, não faz nada.
 
             async function enforceExclusive(label, { verifyPresent = true } = {}) {
-              // Guarda: só faz sentido para "grupo::valor". Sem "::",
-              // groupPrefix viraria 1 caractere e o laço abaixo varreria
-              // quase toda label da issue. Hoje inalcançável (os call sites
-              // garantem "::"), mas o dano de um call site futuro é grande.
-              if (!label.includes('::')) return;
-              const groupPrefix = label.slice(0, label.indexOf('::') + 2);
+              // Guarda: precisa ser "grupo::valor" com os dois lados
+              // não-vazios. Sem isso (sem "::", "::x", ou "x::" de valor
+              // vazio) groupPrefix ficaria degenerado e o laço varreria o
+              // grupo inteiro da issue. O Caso 1 já barra "::x", mas "x::"
+              // (label criada literalmente assim) chega aqui.
+              const sep = label.indexOf('::');
+              if (sep < 1 || sep + 2 >= label.length) return;
+              const groupPrefix = label.slice(0, sep + 2);
 
               // Fonte da verdade: as labels ATUAIS da issue, não o snapshot
               // do webhook.

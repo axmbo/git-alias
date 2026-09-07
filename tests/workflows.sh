@@ -53,29 +53,36 @@ check ".github/workflows/exclusive-scoped-labels.yml existe" \
 # --- permissões: deny-all no topo, issues:write só no job -------------
 check "declara 'permissions: {}' no topo (deny-all)" \
 	"sim" "$(yn has "$WF" '^permissions:[[:space:]]*\{\}[[:space:]]*$')"
-check "o job pede 'issues: write'" \
-	"sim" "$(yn has "$WF" '^[[:space:]]+issues:[[:space:]]+write[[:space:]]*$')"
-# Genérico de propósito: qualquer chave `<escopo>: write` indentada cujo
-# nome não seja `issues` reprova — não uma lista de escopos conhecidos, que
-# esqueceria os que o GitHub criar depois (attestations, models, pages…).
-if grep -E '^[[:space:]]+[a-z_-]+:[[:space:]]+write' "$WF" |
-	grep -Evq '^[[:space:]]+issues:[[:space:]]+write[[:space:]]*$'; then
-	outro_write=sim
+if grep -Eq "^[[:space:]]+issues:[[:space:]]+['\"]?write['\"]?[[:space:]]*\$" "$WF"; then
+	pede_issues=sim
 else
-	outro_write=nao
+	pede_issues=nao
 fi
-check "não pede escrita de nenhum escopo além de 'issues'" "nao" "$outro_write"
-# O atalho escalar `permissions: write-all` (ou `read-all`, `write`…), em
-# qualquer nível, concede permissão ampla sem casar `<escopo>: write` acima.
-# `permissions: {}` não casa (`{` não é `[a-z-]`).
-check "não usa o atalho escalar 'permissions: <valor>'" \
-	"nao" "$(yn grep -Eq '^[[:space:]]*permissions:[[:space:]]+[a-z-]+' "$WF")"
+check "o job pede 'issues: write'" "sim" "$pede_issues"
+# Robusto a forma: normaliza aspas e comentário à direita, varre TODO
+# `<escopo>: write` e `write-all`/`read-all` do arquivo — bloco (`  x: write`),
+# escalar (`permissions: write-all`) ou flow-mapping (`{ x: write }`). A
+# única concessão aceitável é `issues: write`. O corpo do `script:` não
+# contém esses tokens.
+perm_grants=$(
+	sed 's/#.*//' "$WF" | tr -d "\"'" |
+		grep -oE '[a-z_-]+:[[:space:]]*write|write-all|read-all'
+)
+perm_bad=$(printf '%s\n' "$perm_grants" |
+	grep -vE '^issues:[[:space:]]*write$' | grep -c . || true)
+check "nenhuma concessão de permissão além de 'issues: write'" "0" "$perm_bad"
 
-# --- supply chain: action pinada em SHA, não tag flutuante -----------
-check "actions/github-script pinada em SHA de 40 hex" \
-	"sim" "$(yn has "$WF" 'uses:[[:space:]]+actions/github-script@[0-9a-f]{40}[[:space:]]+#')"
-check "nenhum 'uses:' preso a tag flutuante @vN" \
-	"nao" "$(yn grep -Eq 'uses:[[:space:]]+[^@[:space:]]+@v[0-9]+([.][0-9]+)*([[:space:]]|$)' "$WF")"
+# --- supply chain: todo `uses:` remoto pinado em SHA de 40 hex --------
+# Pega `@main`, `@master`, `@v7`, `@1.2.3` — qualquer ref que não seja 40
+# hex. Local (`./…`) e docker (`docker://…`) não se aplicam. Aspas YAML
+# opcionais.
+unpinned=$(
+	grep -E "^[[:space:]]*-?[[:space:]]*uses:[[:space:]]" "$WF" |
+		grep -vE "uses:[[:space:]]+['\"]?(\\./|docker://)" |
+		grep -vE "uses:[[:space:]]+['\"]?[^@[:space:]'\"]+@[0-9a-f]{40}['\"]?([[:space:]#]|\$)" |
+		grep -c . || true
+)
+check "todo 'uses:' remoto pinado em SHA de 40 hex" "0" "$unpinned"
 
 # --- concorrência: NÃO reintroduzir 'concurrency:' -----------------
 # A fila de profundidade 1 do Actions descarta eventos do meio de um burst
