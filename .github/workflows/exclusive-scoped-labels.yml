@@ -30,10 +30,11 @@ jobs:
             // Best-effort, não consistência forte: sem serialização entre
             // execuções (concurrency descartava eventos do meio de um
             // burst), dois relabels do mesmo grupo no mesmo segundo podem
-            // se cruzar e deixar a issue sem label do grupo. Não há
-            // auto-conserto garantido: só um "labeled" posterior mirando
-            // esse mesmo grupo exclusivo reconcilia — label solta, ou de
-            // outro grupo, cai no no-op mais abaixo.
+            // se cruzar e deixar a issue SEM label do grupo; e, raramente,
+            // lag de réplica de leitura além do retry lá embaixo pode
+            // deixar DUAS. Não há auto-conserto garantido: só um "labeled"
+            // posterior mirando esse mesmo grupo exclusivo reconcilia —
+            // label solta, ou de outro grupo, cai no no-op mais abaixo.
 
             const newLabel = context.payload.label.name;
             const issue = context.payload.issue;
@@ -54,6 +55,8 @@ jobs:
               const value = typoMatch[2].trim();
               if (!group || !value) return;
 
+              // Custo do design sem lista fixa: todo "grupo:valor" paga
+              // esta enumeração, mesmo em grupo que nunca terá "::".
               const repoLabels = await github.paginate(
                 github.rest.issues.listLabelsForRepo,
                 { owner, repo, per_page: 100 },
@@ -77,9 +80,16 @@ jobs:
                     color: context.payload.label.color,
                   });
                 } catch (err2) {
-                  // 422 = outra execução criou a mesma label primeiro; é
-                  // exatamente o resultado que queremos.
                   if (err2.status !== 422) throw err2;
+                  // 422 tanto é "outra execução criou primeiro" (ok)
+                  // quanto validação (nome > 50 chars, cor inválida). Só
+                  // engole se a label de fato passou a existir; senão
+                  // propaga o 422 real.
+                  try {
+                    await github.rest.issues.getLabel({ owner, repo, name: fixedLabel });
+                  } catch {
+                    throw err2;
+                  }
                 }
               }
 

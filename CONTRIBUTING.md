@@ -162,10 +162,11 @@ reage a `issues.labeled`: ao aplicar `grupo::valor`, remove as demais
 `grupo::*` da issue (olhando as labels atuais da issue, não o snapshot do
 evento); ao aplicar `priority:p2` (um `:` só) num grupo que já tem labels
 `::`, trata como typo e corrige para `priority::p2`, criando a label se
-preciso. É best-effort: dois relabels do mesmo grupo no mesmo segundo podem
-se cruzar e deixar o grupo sem label; só um `labeled` posterior para esse
-mesmo grupo exclusivo reconcilia (aplicar uma label não relacionada não
-faz nada por ele).
+preciso. É best-effort: um cruzamento de relabels do mesmo grupo no mesmo
+segundo pode deixar o grupo sem label, e — raramente — lag de replicação
+pode deixar duas; em qualquer dos casos, só um `labeled` posterior para
+esse mesmo grupo exclusivo reconcilia (aplicar uma label não relacionada
+não faz nada por ele).
 
 ## Decisões de arquitetura (ADR)
 

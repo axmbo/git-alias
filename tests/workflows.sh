@@ -65,6 +65,11 @@ else
 	outro_write=nao
 fi
 check "não pede escrita de nenhum escopo além de 'issues'" "nao" "$outro_write"
+# O atalho escalar `permissions: write-all` (ou `read-all`, `write`…), em
+# qualquer nível, concede permissão ampla sem casar `<escopo>: write` acima.
+# `permissions: {}` não casa (`{` não é `[a-z-]`).
+check "não usa o atalho escalar 'permissions: <valor>'" \
+	"nao" "$(yn grep -Eq '^[[:space:]]*permissions:[[:space:]]+[a-z-]+' "$WF")"
 
 # --- supply chain: action pinada em SHA, não tag flutuante -----------
 check "actions/github-script pinada em SHA de 40 hex" \
@@ -99,7 +104,8 @@ if command -v node >/dev/null 2>&1; then
 	tmp="$tmpd/script.js"
 	{
 		echo '(async () => {'
-		awk 'f { sub(/^            /, ""); print; next }
+		awk 'f && $0 != "" && $0 !~ /^            / { f = 0 }
+		     f { sub(/^            /, ""); print; next }
 		     /script: \|[-+]?[[:space:]]*$/ { f = 1 }' "$WF"
 		echo '})'
 	} >"$tmp"
