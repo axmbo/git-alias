@@ -85,33 +85,7 @@ jobs:
               }
 
               const fixedLabel = `${group}::${value}`;
-
-              // garante que a label corrigida existe no repo
-              try {
-                await github.rest.issues.getLabel({ owner, repo, name: fixedLabel });
-              } catch (err) {
-                if (err.status !== 404) throw err;
-                try {
-                  await github.rest.issues.createLabel({
-                    owner,
-                    repo,
-                    name: fixedLabel,
-                    color: context.payload.label.color,
-                  });
-                } catch (err2) {
-                  if (err2.status !== 422) throw err2;
-                  // 422 tanto é "outra execução criou primeiro" (ok)
-                  // quanto validação (nome > 50 chars, cor inválida). Só
-                  // engole se a label de fato passou a existir; senão
-                  // propaga o 422 real.
-                  try {
-                    await github.rest.issues.getLabel({ owner, repo, name: fixedLabel });
-                  } catch (err3) {
-                    if (err3.status === 404) throw err2; // não existe -> 422 era validação
-                    throw err3; // 403/5xx/rate-limit: a causa real
-                  }
-                }
-              }
+              await ensureRepoLabel(fixedLabel, context.payload.label.color);
 
               // Adiciona a corrigida ANTES de remover a com typo: se algo
               // falhar no meio, a issue fica com as duas, nunca sem nenhuma.
@@ -182,6 +156,31 @@ jobs:
 
             function sleep(ms) {
               return new Promise((resolve) => setTimeout(resolve, ms));
+            }
+
+            // Garante que a label existe no repo, de forma idempotente e à
+            // prova de corrida com outra execução.
+            async function ensureRepoLabel(name, color) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name });
+                return; // já existe
+              } catch (err) {
+                if (err.status !== 404) throw err;
+              }
+              try {
+                await github.rest.issues.createLabel({ owner, repo, name, color });
+              } catch (err2) {
+                if (err2.status !== 422) throw err2;
+                // 422 tanto é "outra execução criou primeiro" (ok) quanto
+                // validação (nome > 50 chars, cor inválida). Só engole se a
+                // label de fato passou a existir; senão propaga o 422 real.
+                try {
+                  await github.rest.issues.getLabel({ owner, repo, name });
+                } catch (err3) {
+                  if (err3.status === 404) throw err2;
+                  throw err3; // 403/5xx/rate-limit: a causa real
+                }
+              }
             }
 
             // Corrida com outra execução pode remover a label antes de nós;

@@ -42,23 +42,15 @@ yn() { # ecoa "sim" se o comando passar, "nao" se falhar
 	if "$@"; then echo sim; else echo nao; fi
 }
 
-has() { # has <arquivo> <ere>: <ere> casa em <arquivo>?
-	grep -Eq -- "$2" "$1"
-}
-
 # --- existência ----------------------------------------------------------
 check ".github/workflows/exclusive-scoped-labels.yml existe" \
 	"sim" "$(yn test -f "$WF")"
 
 # --- permissões: deny-all no topo, issues:write só no job -------------
 check "declara 'permissions: {}' no topo (deny-all)" \
-	"sim" "$(yn has "$WF" '^permissions:[[:space:]]*\{\}[[:space:]]*$')"
-if grep -Eq "^[[:space:]]+issues:[[:space:]]+['\"]?write['\"]?[[:space:]]*\$" "$WF"; then
-	pede_issues=sim
-else
-	pede_issues=nao
-fi
-check "o job pede 'issues: write'" "sim" "$pede_issues"
+	"sim" "$(yn grep -Eq '^permissions:[[:space:]]*\{\}[[:space:]]*$' "$WF")"
+issues_re="^[[:space:]]+issues:[[:space:]]+['\"]?write['\"]?[[:space:]]*$"
+check "o job pede 'issues: write'" "sim" "$(yn grep -Eq "$issues_re" "$WF")"
 # Robusto a forma: extrai só as regiões `permissions:` (a linha + o bloco
 # mais indentado que a segue), normaliza aspas/comentário, e varre
 # `<escopo>: write|read` / `write-all` / `read-all` — cobre bloco, escalar
@@ -73,7 +65,7 @@ perm_region=$(awk '
 ' "$WF")
 perm_bad=$(printf '%s\n' "$perm_region" | sed 's/#.*//' | tr -d "\"'" |
 	grep -oE '[a-z_-]+:[[:space:]]*(write|read)|write-all|read-all' |
-	grep -vE '^issues:[[:space:]]*write$' | grep -c . || true)
+	grep -cvE '^issues:[[:space:]]*write$' || true)
 check "nenhuma concessão de permissão além de 'issues: write'" "0" "$perm_bad"
 
 # --- supply chain: todo `uses:` remoto pinado em SHA de 40 hex --------
@@ -82,8 +74,9 @@ check "nenhuma concessão de permissão além de 'issues: write'" "0" "$perm_bad
 # opcionais.
 unpinned=$(
 	grep -E "^[[:space:]]*-?[[:space:]]*uses:[[:space:]]" "$WF" |
-		grep -vE "uses:[[:space:]]+['\"]?(\\./|docker://)" |
-		grep -vE "uses:[[:space:]]+['\"]?[^@[:space:]'\"]+@[0-9a-f]{40}['\"]?([[:space:]#]|\$)" |
+		grep -vE \
+			-e "uses:[[:space:]]+['\"]?(\\./|docker://)" \
+			-e "uses:[[:space:]]+['\"]?[^@[:space:]'\"]+@[0-9a-f]{40}['\"]?([[:space:]#]|\$)" |
 		grep -c . || true
 )
 check "todo 'uses:' remoto pinado em SHA de 40 hex" "0" "$unpinned"
