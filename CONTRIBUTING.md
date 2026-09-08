@@ -77,6 +77,27 @@ O CI também converte a saída do `shellcheck` em SARIF e a publica na aba
 e anotação no PR. A trava que barra o merge continua sendo o job `shellcheck`
 falhar; o code scanning é só a vitrine.
 
+## Testes manuais
+
+Algumas coisas não dá para automatizar na suíte de `tests/` — as que
+dependem de interação ao vivo com o GitHub (um workflow reagindo a um
+evento, a API de labels/issues). Para essas, `docs/testes-manuais/` reúne
+roteiros; cada um é autocontido, com setup, casos e teardown.
+
+Roteiros:
+
+- [`exclusive-scoped-labels.md`](docs/testes-manuais/exclusive-scoped-labels.md)
+  — o workflow que impõe exclusividade de *scoped labels*.
+
+Disciplina comum a todos:
+
+- Rodar sempre numa **issue descartável** (título com `[SCRATCH]`), nunca
+  numa issue real.
+- **Sempre fazer o teardown** — apagar a issue e as labels auxiliares que
+  o roteiro criou; a última linha do teardown confere que nada sobrou.
+- Ao terminar, acrescentar uma linha na tabela **Registro de execuções** do
+  roteiro (data, commit de `main` testado, casos rodados, resultado).
+
 ## Segurança
 
 Como reportar uma vulnerabilidade: [SECURITY.md](SECURITY.md). Não abra

@@ -522,6 +522,10 @@ Linux e num macOS (BSD `stat`/`readlink`/`mktemp`; ver
 `completions/git-alias.bash` (o `.zsh` fica de fora — o `shellcheck` não
 cobre zsh). Ver [CONTRIBUTING.md](CONTRIBUTING.md).
 
+O que depende de interação ao vivo com o GitHub (um workflow reagindo a um
+evento) não cabe na suíte; esses casos têm roteiros em
+[`docs/testes-manuais/`](docs/testes-manuais/).
+
 ## Licença
 
 MIT (`SPDX-License-Identifier: MIT`) — ver [LICENSE](LICENSE).
