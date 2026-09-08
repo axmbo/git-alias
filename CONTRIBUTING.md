@@ -82,7 +82,7 @@ falhar; o code scanning é só a vitrine.
 Algumas coisas não dá para automatizar na suíte de `tests/` — as que
 dependem de interação ao vivo com o GitHub (um workflow reagindo a um
 evento, a API de labels/issues). Para essas, `docs/testes-manuais/` reúne
-roteiros; cada um é autocontido, com setup, casos e teardown.
+roteiros autocontidos, cada um com os passos e a limpeza.
 
 Roteiros:
 
@@ -92,15 +92,12 @@ Roteiros:
 Disciplina comum a todos:
 
 - Rodar sempre numa **issue descartável** (título com `[SCRATCH]`), nunca
-  numa issue real.
-- Antes de começar, conferir que as labels auxiliares do roteiro **ainda
-  não existem** — se existirem, pode ser config real do repo, e o teardown
-  as apagaria. O roteiro traz um preflight para isso.
-- **Sempre fazer o teardown** — apagar a issue e só as labels que este run
-  criou. A última linha lista labels marcadas com `scratch`; serve de
-  lembrete, não de garantia (não pega tudo).
+  numa issue real, e apagá-la no fim.
+- Preferir labels que já existem no repo. Se um roteiro **precisar** criar
+  label auxiliar: conferir antes que o nome não existe (para não apagar
+  config real no teardown) e apagar só o que aquele run criou.
 - Ao terminar, acrescentar uma linha na tabela **Registro de execuções** do
-  roteiro (data, commit de `main` testado, casos rodados, resultado).
+  roteiro (data, commit de `main` testado, resultado).
 
 ## Segurança
 
