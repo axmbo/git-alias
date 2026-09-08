@@ -502,8 +502,8 @@ O runner roda todas as suítes de `tests/`:
 - `tests/workflows.sh` — checagem estática dos workflows de
   `.github/workflows/` com lógica em `github-script` (hoje
   `exclusive-scoped-labels.yml`): permissões mínimas, action pinada em
-  SHA e `node --check` no corpo do `script:` quando o `node` está
-  disponível.
+  SHA, ausência de `concurrency:` e a forma do `script:` conforme o
+  ADR-0005.
 
 O script é POSIX sh e precisa passar tanto em `dash` quanto em `bash`. Para
 fixar o shell de cada suíte:

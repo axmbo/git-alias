@@ -4,18 +4,17 @@
 #
 # Sem harness de GitHub Actions: trava as invariantes que uma review humana
 # deixa passar batido por serem string dentro de YAML — bloco de permissões
-# presente e mínimo, action pinada em SHA (não tag flutuante @vN), e o corpo
-# do `script:` sem erro de sintaxe JS (via `node --check`, quando o node
-# está instalado). Também fixa a decisão do ADR-0005: o workflow SÓ impõe
-# exclusividade — reconcilia pelo estado atual da issue (listLabelsOnIssue),
-# não enumera as labels do repo, não cria label — e nada de `concurrency:`
-# (a fila de profundidade 1 do Actions descartava eventos do meio de um
-# burst).
+# presente e mínimo, action pinada em SHA (não tag flutuante @vN), nada de
+# `concurrency:` (a fila de profundidade 1 do Actions descartava eventos do
+# meio de um burst), e a forma do `script:` conforme o ADR-0005: SÓ impõe
+# exclusividade (reconcilia por `listLabelsOnIssue`, não enumera as labels
+# do repo, não cria label).
 #
-# É o próprio artefato entregue, então checa também que o discriminador
-# discrimina (um token inexistente NÃO é encontrado). A cobertura de
-# comportamento fica para a issue #17.
-# Determinístico: só shell POSIX, grep e awk (node é opcional).
+# É checagem de FORMA, não de sintaxe nem de comportamento — o corpo do
+# `script:` só é grepado, não executado (issue #17 tira o JS de dentro do
+# YAML). É o próprio artefato entregue, então checa também que o
+# discriminador discrimina (um token inexistente NÃO é encontrado).
+# Determinístico: só shell POSIX, grep e awk.
 
 set -eu
 
@@ -23,7 +22,6 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WF="$ROOT/.github/workflows/exclusive-scoped-labels.yml"
 pass=0
 fail=0
-skip=0
 
 check() { # descrição, esperado, obtido
 	if [ "$2" = "$3" ]; then
@@ -91,47 +89,25 @@ check "não reintroduz 'concurrency:'" \
 # --- só impõe exclusividade (ADR-0005) -------------------------------
 check "reconcilia pelo estado atual da issue (listLabelsOnIssue)" \
 	"sim" "$(yn grep -Fq 'listLabelsOnIssue' "$WF")"
-check "não enumera as labels do repo (não reintroduz typo-fix)" \
+check "não enumera as labels do repo" \
 	"nao" "$(yn grep -Fq 'listLabelsForRepo' "$WF")"
-check "não cria label (não reintroduz createLabel)" \
+check "não cria label" \
 	"nao" "$(yn grep -Fq 'createLabel' "$WF")"
 
-# --- sintaxe do corpo do script: (best effort: só com node) --------
-# github-script roda o corpo dentro de uma async function; para o
-# `node --check` refletir isso, envolve igual antes de checar.
-if command -v node >/dev/null 2>&1; then
-	# Nome com sufixo .js: o `node --check` recente deduz o formato do
-	# módulo pela extensão e recusa um nome sem extensão conhecida.
-	tmpd="$(mktemp -d)"
-	trap 'rm -rf "$tmpd"' EXIT
-	tmp="$tmpd/script.js"
-	{
-		echo '(async () => {'
-		awk 'f && $0 != "" && $0 !~ /^            / { f = 0 }
-		     f { sub(/^            /, ""); print; next }
-		     /script: \|[-+]?[[:space:]]*$/ { f = 1 }' "$WF"
-		echo '})'
-	} >"$tmp"
-	# Guarda: se a extração falhar (o bloco `script:` mudar de forma), o
-	# corpo sai vazio/truncado e o `node --check` passaria em vácuo. Exige
-	# um sentinela no começo E um no fim (a última função do script), então
-	# um corte no meio é pego.
-	check "extração do corpo do script: pegou o começo (sentinela newLabel)" \
-		"sim" "$(yn grep -Fq 'const newLabel = context.payload.label.name' "$tmp")"
-	check "extração do corpo do script: pegou até o fim (sentinela removeLabelIfPresent)" \
-		"sim" "$(yn grep -Fq 'function removeLabelIfPresent' "$tmp")"
-	st=0
-	node --check "$tmp" 2>/dev/null || st=$?
-	check "node --check no corpo do script: sem erro de sintaxe" "0" "$st"
-else
-	skip=$((skip + 1))
-	echo "skip - node não encontrado; pulando 'node --check' do script"
-fi
+# --- forma do corpo do script: as funções top-level esperadas ------
+# Não é validação de sintaxe (isso é a issue #17, que tira o JS de dentro
+# do YAML); só pega um script gutado/truncado — começo, meio e fim.
+check "o script lê a label do gatilho" \
+	"sim" "$(yn grep -Fq 'const newLabel = context.payload.label.name' "$WF")"
+check "o script define currentLabelNames()" \
+	"sim" "$(yn grep -Fq 'async function currentLabelNames' "$WF")"
+check "o script define removeLabelIfPresent()" \
+	"sim" "$(yn grep -Fq 'async function removeLabelIfPresent' "$WF")"
 
 # --- o discriminador de fato discrimina ---------------------------
 check "controle: token inexistente não é encontrado" \
 	"nao" "$(yn grep -Fq 'zzz-nao-existe-no-workflow' "$WF")"
 
 echo
-echo "pass=$pass fail=$fail skip=$skip"
+echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]

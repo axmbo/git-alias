@@ -28,9 +28,8 @@ paginada `listLabelsForRepo` a cada evento de um `:`, detecção dinâmica de
 `enforceExclusive`, um guard posicional para `grupo::` de valor vazio, e
 `.toLowerCase()` espalhado.
 
-Ao exercitar o workflow ao vivo (roteiro em
-[`docs/testes-manuais/`](../testes-manuais/exclusive-scoped-labels.md)),
-ficou claro que a justificativa de (2) não se sustenta:
+Ao exercitar o workflow ao vivo, ficou claro que a justificativa de (2)
+não se sustenta:
 
 - **Não dá para aplicar uma label que não existe.** `POST .../labels` com
   um nome inexistente falha. O workflow só vê labels já cadastradas no
@@ -66,10 +65,10 @@ issue, remove as demais labels de prefixo `grupo::` **dessa issue**.
 
 ## Consequências
 
-- O `script:` cai de ~180 para ~45 linhas. Somem `listLabelsForRepo`,
-  `ensureRepoLabel` + a escada 404/422, `addLabels`, a recursão, a
-  detecção dinâmica de grupo exclusivo, o guard posicional e todo
-  `.toLowerCase()`. `enforceExclusive` deixa de ser função à parte.
+- O `script:` fica com uma responsabilidade só e ~¼ do tamanho: caem o
+  subsistema de typo-fix / criação de label / normalização de caixa (a
+  enumeração paginada, a escada `getLabel`/`createLabel`/422, o
+  `addLabels`, a recursão, o guard posicional, o `.toLowerCase()`).
 - **Perde-se a auto-correção de typo.** Se alguém aplicar `priority:p2`
   (um `:`) num grupo exclusivo, a issue fica com essa label e sem
   exclusividade imposta até alguém trocar à mão. É aceito: o caso exige uma
@@ -78,9 +77,9 @@ issue, remove as demais labels de prefixo `grupo::` **dessa issue**.
 - `permissions: issues: write` continua cobrindo tudo (`removeLabel` +
   `listLabelsOnIssue`); nunca foi preciso `contents` nem criação de label
   como escopo à parte.
-- `tests/workflows.sh` perde os checks de `listLabelsForRepo` e
-  `KNOWN_EXCLUSIVE_GROUPS`; o roteiro manual perde os casos de typo-fix e
-  de criação de label.
+- `tests/workflows.sh` troca os checks de `listLabelsForRepo` /
+  `KNOWN_EXCLUSIVE_GROUPS` por asserções de que o script não enumera nem
+  cria label.
 - A seção "Labels de issue" do `CONTRIBUTING.md` é reescrita: `grupo:valor`
   (um `:`) é sempre livre; não existe "grupo vira exclusivo ao ganhar a 1ª
   `grupo::*`".

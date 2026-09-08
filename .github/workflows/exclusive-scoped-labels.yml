@@ -24,26 +24,18 @@ jobs:
             //
             // Este workflow faz só isso: ao aplicar "grupo::valor"
             // bem-formado, remove as demais "grupo::*" DESSA issue. Não
-            // reescreve, não cria label, não normaliza caixa (nome de
-            // label no GitHub é único sem distinção de caixa). Ver
+            // reescreve, não cria label, não normaliza caixa. É best-effort
+            // (sem serialização entre execuções). Contexto e limites: ver
             // docs/adr/0005.
-            //
-            // Best-effort, sem serialização entre execuções (um
-            // "concurrency:" descartaria eventos do meio de um burst):
-            // duas escritas do mesmo grupo no mesmo segundo podem se cruzar
-            // e deixar a issue sem label do grupo; e, raramente, lag de
-            // réplica de leitura além do retry pode deixar duas. Só um
-            // "labeled" posterior mirando esse mesmo grupo reconcilia.
 
             const newLabel = context.payload.label.name;
-            const issue = context.payload.issue;
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
+            const { owner, repo } = context.repo;
+            const { number: issue_number } = context.payload.issue;
 
             // Bem-formado: algo dos dois lados do 1º "::" ("a::b::c" ->
             // grupo "a"). Senão — um ":" só, "grupo::", "::valor", label
             // solta — não há o que fazer.
-            const m = newLabel.match(/^([^:]+)::(.+)$/);
+            const m = newLabel.match(/^([^:]+)::.+/);
             if (!m) return;
             const groupPrefix = `${m[1]}::`;
 
@@ -53,7 +45,7 @@ jobs:
             // usuário a desfez — nada a fazer.
             let names = await currentLabelNames();
             if (!names.includes(newLabel)) {
-              await sleep(1500);
+              await new Promise((r) => setTimeout(r, 1500));
               names = await currentLabelNames();
               if (!names.includes(newLabel)) return;
             }
@@ -67,25 +59,16 @@ jobs:
             async function currentLabelNames() {
               const current = await github.paginate(
                 github.rest.issues.listLabelsOnIssue,
-                { owner, repo, issue_number: issue.number, per_page: 100 },
+                { owner, repo, issue_number, per_page: 100 },
               );
               return current.map((l) => l.name);
-            }
-
-            function sleep(ms) {
-              return new Promise((resolve) => setTimeout(resolve, ms));
             }
 
             // Corrida com outra execução pode remover a label antes de
             // nós; 404 aqui só significa "já não está na issue".
             async function removeLabelIfPresent(name) {
               try {
-                await github.rest.issues.removeLabel({
-                  owner,
-                  repo,
-                  issue_number: issue.number,
-                  name,
-                });
+                await github.rest.issues.removeLabel({ owner, repo, issue_number, name });
               } catch (err) {
                 if (err.status !== 404) throw err;
               }

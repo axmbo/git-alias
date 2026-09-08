@@ -29,10 +29,10 @@ Ele executa:
   `.github/workflows/` com lógica em `github-script` (hoje
   `exclusive-scoped-labels.yml`): permissão mínima (qualquer
   `<escopo>: write`/`read` além de `issues: write` reprova), action pinada
-  em SHA, ausência de `concurrency:`, o script reconcilia por
-  `listLabelsOnIssue` e não enumera/cria label (ADR-0005), e `node --check`
-  no corpo do `script:` quando o `node` está disponível. Cobertura de
-  comportamento depende de extrair o script para um módulo testável —
+  em SHA, ausência de `concurrency:`, e a forma do `script:` conforme o
+  ADR-0005 (reconcilia por `listLabelsOnIssue`, não enumera nem cria
+  label). É checagem de forma, não de sintaxe nem de comportamento —
+  extrair o script para um módulo testável é a
   [issue #17](https://github.com/axmbo/git-alias/issues/17).
 
 O script alvo é POSIX sh e precisa continuar limpo tanto em `dash` quanto em
