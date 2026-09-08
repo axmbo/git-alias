@@ -54,31 +54,20 @@ gh label create "priority::"    --color ededed -d "[scratch] valor vazio"
 
 ## Como observar cada caso
 
-`gh run list -L 1` pode devolver o run **anterior** (o evento ainda não foi
-enfileirado) ou o run de **outra** issue. Filtre pelos runs desta issue e
-espere um ID novo:
+Rode um caso de cada vez, sem outra issue sendo rotulada em paralelo (senão
+o `gh run list` pode pegar o run errado):
 
 ```sh
-run_id() {
-  gh run list --workflow exclusive-scoped-labels.yml -L 20 \
-    --json databaseId,displayTitle \
-    --jq '[.[] | select(.displayTitle == "[SCRATCH] teste exclusive-scoped-labels")][0].databaseId // empty'
-}
-```
-
-Para cada caso:
-
-```sh
-PREV=$(run_id)                                   # ID do último run desta issue, antes da ação
-gh issue edit N --add-label "…"                  # a ação (coluna "Ação" da tabela)
-until NEW=$(run_id); [ -n "$NEW" ] && [ "$NEW" != "$PREV" ]; do sleep 3; done
-gh run watch "$NEW" --exit-status               # falha se o run falhar
+gh issue edit N --add-label "…"                 # a ação (coluna "Ação" da tabela)
+sleep 3
+RUN=$(gh run list --workflow exclusive-scoped-labels.yml -L 1 --json databaseId --jq '.[0].databaseId')
+gh run watch "$RUN" --exit-status               # falha se o run falhar
 gh issue view N --json labels --jq '[.labels[].name] | sort'   # confira o estado
 ```
 
-**Caso 6** (remover label): não há run esperado. Guarde `PREV=$(run_id)`,
-faça o `--remove-label`, espere ~20 s e confirme que `run_id` continua
-igual a `PREV`.
+**Caso 6** (remover label): não há run esperado. Faça o `--remove-label`,
+espere ~15 s e confirme que `gh run list -L 3` não tem run novo e que as
+labels não mudaram.
 
 ## Casos
 
@@ -126,5 +115,4 @@ gh label list -L 200 --json name,description \
 
 | Data | Commit de `main` | Casos | Resultado | Notas |
 |---|---|---|---|---|
-| 2026-09-07 | `19cd392` | 1–5 (via `gh`) | 5/5 OK | 1ª execução, logo após o merge do #16 (versão com typo-fix, hoje removida pelo ADR-0005). |
-| 2026-09-08 | `cee1c02` | 0–5 (via `gh`) | 6/6 OK | Após o merge do #23 (workflow simplificado). Caso 4 confirma que `area:scratch` não é reescrita. |
+| 2026-09-08 | `cee1c02` | 0–5 (via `gh`) | 6/6 OK | Após o merge do #23 (workflow simplificado, ADR-0005). Caso 4 confirma que `area:scratch` não é reescrita. |
