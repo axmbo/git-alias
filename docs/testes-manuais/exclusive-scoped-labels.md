@@ -35,7 +35,7 @@ Convenções gerais de teste manual: ver a seção **Testes manuais** do
 apagaria. Investigue antes.
 
 ```sh
-for l in "type::scratch" "area:scratch" "priority::"; do
+for l in "type::scratch" "area:scratch"; do
   gh label list -L 200 --json name --jq '.[].name' | grep -qxF "$l" && echo "JÁ EXISTE: $l"
 done
 ```
@@ -49,7 +49,6 @@ gh issue create -t "[SCRATCH] teste exclusive-scoped-labels" \
 
 gh label create "type::scratch" --color ededed -d "[scratch]"
 gh label create "area:scratch"  --color ededed -d "[scratch] um :"
-gh label create "priority::"    --color ededed -d "[scratch] valor vazio"
 ```
 
 ## Como observar cada caso
@@ -65,7 +64,7 @@ gh run watch "$RUN" --exit-status               # falha se o run falhar
 gh issue view N --json labels --jq '[.labels[].name] | sort'   # confira o estado
 ```
 
-**Caso 6** (remover label): não há run esperado. Faça o `--remove-label`,
+**Caso 5** (remover label): não há run esperado. Faça o `--remove-label`,
 espere ~15 s e confirme que `gh run list -L 3` não tem run novo e que as
 labels não mudaram.
 
@@ -78,8 +77,7 @@ labels não mudaram.
 | 2 | **Grupo diferente não é tocado** | `[priority::p3]` | `--add-label "type::scratch"` | `[priority::p3, type::scratch]` — nada removido |
 | 3 | **Label solta** | `[priority::p3, type::scratch]` | `--add-label "bug"` | as três presentes — nada removido |
 | 4 | **Um `:` só — namespacing livre** | `[bug, priority::p3, type::scratch]` | `--add-label "area:scratch"` | `area:scratch` fica como está — **não** vira `area::scratch`, nada removido |
-| 5 | **Valor vazio — não casa** | `[area:scratch, bug, priority::p3, type::scratch]` | `--add-label "priority::"` | `priority::` presente e **`priority::p3` continua** — a regex não casa |
-| 6 | **Remover label não dispara nada** | qualquer | `--remove-label "bug"` | nenhum run novo (ver acima); nada mais muda |
+| 5 | **Remover label não dispara nada** | qualquer | `--remove-label "bug"` | nenhum run novo (ver acima); nada mais muda |
 
 ## Fora de escopo (não reproduzível à mão de forma confiável)
 
@@ -100,7 +98,7 @@ guardado por existência.
 gh issue delete N --yes
 gh issue view N >/dev/null 2>&1 && echo "ATENÇÃO: issue N ainda existe"
 
-for l in "type::scratch" "area:scratch" "priority::"; do
+for l in "type::scratch" "area:scratch"; do
   gh label list -L 200 --json name --jq '.[].name' | grep -qxF "$l" && gh label delete "$l" --yes
 done
 
@@ -115,4 +113,4 @@ gh label list -L 200 --json name,description \
 
 | Data | Commit de `main` | Casos | Resultado | Notas |
 |---|---|---|---|---|
-| 2026-09-08 | `cee1c02` | 0–5 (via `gh`) | 6/6 OK | Após o merge do #23 (workflow simplificado, ADR-0005). Caso 4 confirma que `area:scratch` não é reescrita. |
+| 2026-09-08 | `cee1c02` | 0–4 (via `gh`) | 5/5 OK | Após o merge do #23 (workflow simplificado, ADR-0005). Caso 4 confirma que `area:scratch` não é reescrita. (Nessa rodada também rodou um caso de label de valor vazio, depois removido do roteiro.) |
