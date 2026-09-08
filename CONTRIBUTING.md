@@ -93,8 +93,12 @@ Disciplina comum a todos:
 
 - Rodar sempre numa **issue descartável** (título com `[SCRATCH]`), nunca
   numa issue real.
-- **Sempre fazer o teardown** — apagar a issue e as labels auxiliares que
-  o roteiro criou; a última linha do teardown confere que nada sobrou.
+- Antes de começar, conferir que as labels auxiliares do roteiro **ainda
+  não existem** — se existirem, pode ser config real do repo, e o teardown
+  as apagaria. O roteiro traz um preflight para isso.
+- **Sempre fazer o teardown** — apagar a issue e só as labels que este run
+  criou. A última linha lista labels marcadas com `scratch`; serve de
+  lembrete, não de garantia (não pega tudo).
 - Ao terminar, acrescentar uma linha na tabela **Registro de execuções** do
   roteiro (data, commit de `main` testado, casos rodados, resultado).
 
