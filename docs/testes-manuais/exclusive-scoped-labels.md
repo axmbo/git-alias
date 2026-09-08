@@ -4,10 +4,15 @@ Verifica o comportamento de
 [`.github/workflows/exclusive-scoped-labels.yml`](../../.github/workflows/exclusive-scoped-labels.yml)
 numa issue descartável, contra a API real do GitHub.
 
-Por que manual: o workflow reage a `issues.labeled` e mexe em labels de
-issue via API — não há como exercitar isso na suíte estática de `tests/`
-(ver a issue [#17](https://github.com/axmbo/git-alias/issues/17), que
-rastreia extrair a lógica para um módulo `.js` com teste automatizado).
+O workflow faz **uma** coisa (ver
+[ADR-0005](../adr/0005-workflow-de-labels-so-impoe-exclusividade.md)): ao
+aplicar `grupo::valor` bem-formado, remove as demais `grupo::*` da issue.
+Não reescreve `grupo:valor`, não cria label, não normaliza caixa.
+
+Por que manual: reage a `issues.labeled` e mexe em labels via API — a
+suíte estática de `tests/` só checa a forma do `script:`, não o roda (a
+issue [#17](https://github.com/axmbo/git-alias/issues/17) rastreia tirar o
+JS de dentro do YAML para um módulo com teste automatizado).
 
 > **Um workflow de evento de repositório (`issues`, `label`, …) só roda a
 > partir do branch _default_ (`main`).** Para testar uma *alteração* neste
@@ -20,7 +25,7 @@ Convenções gerais de teste manual: ver a seção **Testes manuais** do
 
 - Permissão para criar/apagar issue e label no repositório.
 - O grupo `priority::p0`…`priority::p3` cadastrado (já é o caso).
-- A label default do GitHub `bug` presente (usada no caso 3).
+- A label default do GitHub `bug` presente (caso 3).
 - `gh` autenticado.
 
 ## Setup
@@ -30,26 +35,22 @@ Convenções gerais de teste manual: ver a seção **Testes manuais** do
 apagaria. Investigue antes.
 
 ```sh
-for l in "type::feature" "priority:p2" "priority::" \
-         "area::seed" "area:web" "area::web" "topic:docs"; do
+for l in "type::scratch" "area:scratch" "priority::"; do
   gh label list -L 200 --json name --jq '.[].name' | grep -qxF "$l" && echo "JÁ EXISTE: $l"
 done
 ```
 
-Preflight limpo → crie a issue (**sem** label) e as auxiliares do bloco
-principal:
+Preflight limpo → crie a issue (**sem** label) e as auxiliares:
 
 ```sh
 gh issue create -t "[SCRATCH] teste exclusive-scoped-labels" \
   -b "Descartável. Apagar ao fim."
 #   -> anote o número em N
 
-gh label create "type::feature" --color 1D76DB -d "[scratch]"
-gh label create "priority:p2"   --color FBCA04 -d "[scratch] typo de um :"
-gh label create "priority::"    --color cccccc -d "[scratch] valor vazio"
+gh label create "type::scratch" --color ededed -d "[scratch]"
+gh label create "area:scratch"  --color ededed -d "[scratch] um :"
+gh label create "priority::"    --color ededed -d "[scratch] valor vazio"
 ```
-
-As labels dos casos opcionais (7/8) são criadas no próprio caso.
 
 ## Como observar cada caso
 
@@ -85,29 +86,20 @@ igual a `PREV`.
 |---|---|---|---|---|
 | 0 | **Semear a prioridade** | `[]` | `--add-label "priority::p1"` | `[priority::p1]` — run roda, nada a reconciliar |
 | 1 | **Substituição exclusiva** — o caso central | `[priority::p1]` | `--add-label "priority::p3"` | `[priority::p3]` — a anterior sai |
-| 2 | **Grupo diferente não é tocado** | `[priority::p3]` | `--add-label "type::feature"` | `[priority::p3, type::feature]` — nada removido |
-| 3 | **Label solta** | `[priority::p3, type::feature]` | `--add-label "bug"` | as três presentes — nada removido |
-| 4 | **Typo de um `:`** — grupo já exclusivo | `[bug, priority::p3, type::feature]` | `--add-label "priority:p2"` | `[bug, priority::p2, type::feature]` — vira `::`, `priority::p3` sai, `priority:p2` some |
-| 5 | **Guarda de valor vazio** | `[bug, priority::p2, type::feature]` | `--add-label "priority::"` | `priority::` presente e **`priority::p2` continua** — o guard barra |
+| 2 | **Grupo diferente não é tocado** | `[priority::p3]` | `--add-label "type::scratch"` | `[priority::p3, type::scratch]` — nada removido |
+| 3 | **Label solta** | `[priority::p3, type::scratch]` | `--add-label "bug"` | as três presentes — nada removido |
+| 4 | **Um `:` só — namespacing livre** | `[bug, priority::p3, type::scratch]` | `--add-label "area:scratch"` | `area:scratch` fica como está — **não** vira `area::scratch`, nada removido |
+| 5 | **Valor vazio — não casa** | `[area:scratch, bug, priority::p3, type::scratch]` | `--add-label "priority::"` | `priority::` presente e **`priority::p3` continua** — a regex não casa |
 | 6 | **Remover label não dispara nada** | qualquer | `--remove-label "bug"` | nenhum run novo (ver acima); nada mais muda |
-
-### Opcionais (criam label nova no repositório — o teardown já cobre)
-
-Confira antes que os nomes usados não existem (o preflight do setup já os cobre).
-
-| # | Situação | Passos | Esperado |
-|---|---|---|---|
-| 7 | **Criação de label** | `gh label create "area::seed" --color ededed -d "[scratch]"` (agora o grupo `area` é exclusivo); `gh label create "area:web" --color ededed -d "[scratch]"`; `gh issue edit N --add-label "area:web"` | workflow cria `area::web`, aplica na issue, remove `area:web` |
-| 8 | **Namespacing livre** | `gh label create "topic:docs" --color ededed -d "[scratch]"` (nenhum `topic::` existe); `gh issue edit N --add-label "topic:docs"` | `topic:docs` fica como está — não é reescrita, nada removido |
 
 ## Fora de escopo (não reproduzível à mão de forma confiável)
 
 - Corrida de duas escritas do mesmo grupo no mesmo segundo — pode deixar o
   grupo sem label.
-- Lag de réplica além do retry de 1,5 s — pode deixar duas labels.
+- Lag de réplica além do único retry — pode deixar duas labels.
 
 Ambas são limitações *best-effort* documentadas no cabeçalho do workflow e
-na seção "Labels de issue" do `CONTRIBUTING.md`.
+no [ADR-0005](../adr/0005-workflow-de-labels-so-impoe-exclusividade.md).
 
 ## Teardown
 
@@ -119,8 +111,7 @@ guardado por existência.
 gh issue delete N --yes
 gh issue view N >/dev/null 2>&1 && echo "ATENÇÃO: issue N ainda existe"
 
-for l in "type::feature" "priority:p2" "priority::" \
-         "area::seed" "area:web" "area::web" "topic:docs"; do
+for l in "type::scratch" "area:scratch" "priority::"; do
   gh label list -L 200 --json name --jq '.[].name' | grep -qxF "$l" && gh label delete "$l" --yes
 done
 
@@ -135,4 +126,5 @@ gh label list -L 200 --json name,description \
 
 | Data | Commit de `main` | Casos | Resultado | Notas |
 |---|---|---|---|---|
-| 2026-09-07 | `19cd392` | 1, 2, 3, 4, 5 (via `gh`, sem passos 0/6) | 5/5 OK | 1ª execução, logo após o merge do #16. Caminho de criação de label (`ensureRepoLabel` → 404 → `createLabel`) não exercitado ao vivo — só coberto agora pelo caso 7. |
+| 2026-09-07 | `19cd392` | 1–5 (via `gh`) | 5/5 OK | 1ª execução, logo após o merge do #16 (versão com typo-fix, hoje removida pelo ADR-0005). |
+| 2026-09-08 | `cee1c02` | 0–5 (via `gh`) | 6/6 OK | Após o merge do #23 (workflow simplificado). Caso 4 confirma que `area:scratch` não é reescrita. |
