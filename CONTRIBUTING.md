@@ -28,12 +28,12 @@ Ele executa:
 - `tests/workflows.sh` — checagem estática dos workflows de
   `.github/workflows/` com lógica em `github-script` (hoje
   `exclusive-scoped-labels.yml`): permissão mínima (qualquer
-  `<escopo>: write` além de `issues` reprova), action pinada em SHA,
-  ausência de `concurrency:`, presença de `listLabelsForRepo` /
-  `listLabelsOnIssue`, e `node --check` no corpo do `script:` quando o
-  `node` está disponível. Cobertura de comportamento (typo, 404, ordem
-  add-antes-de-remove) depende de extrair o script para um módulo testável
-  — [issue #17](https://github.com/axmbo/git-alias/issues/17).
+  `<escopo>: write`/`read` além de `issues: write` reprova), action pinada
+  em SHA, ausência de `concurrency:`, e a forma do `script:` conforme o
+  ADR-0005 (reconcilia por `listLabelsOnIssue`, não enumera nem cria
+  label). É checagem de forma, não de sintaxe nem de comportamento —
+  extrair o script para um módulo testável é a
+  [issue #17](https://github.com/axmbo/git-alias/issues/17).
 
 O script alvo é POSIX sh e precisa continuar limpo tanto em `dash` quanto em
 `bash`. Fixe o shell de cada suíte com `SHELL_UNDER_TEST`:
@@ -147,28 +147,22 @@ Convenção estilo *scoped labels* do GitLab:
 - `grupo::valor` (dois `:`) — **exclusiva**: uma issue só carrega uma label
   desse grupo por vez (ex.: `priority::p0`…`priority::p3`). Um nível só: em
   `a::b::c` o grupo é `a` (o primeiro `::`); aninhar não é suportado.
-- `grupo:valor` (um `:` só), num grupo sem nenhuma label `::` — namespacing
-  livre, **não** exclusivo.
+- `grupo:valor` (um `:` só) — namespacing livre, **não** exclusivo, sempre.
 - label solta (`enhancement`, `bug`…) — não exclusiva.
-
-Não há lista fixa de grupos exclusivos, e não é a primeira label que
-decide: um grupo é exclusivo **enquanto existir** ao menos uma label
-`grupo::*` cadastrada no repositório. Criar a primeira `grupo::*` num grupo
-que só tinha `grupo:valor` torna o grupo exclusivo dali em diante; apagar
-todas as `grupo::*` reverte.
 
 O workflow
 [.github/workflows/exclusive-scoped-labels.yml](.github/workflows/exclusive-scoped-labels.yml)
-reage a `issues.labeled`: ao aplicar `grupo::valor`, remove as demais
-`grupo::*` da issue (olhando as labels atuais da issue, não o snapshot do
-evento); ao aplicar `priority:p2` (um `:` só) num grupo que já tem labels
-`::`, trata como typo e corrige para `priority::p2`, criando a label se
-preciso. É best-effort: duas escritas do mesmo grupo no mesmo segundo (dois
-relabels, ou uma criação de issue já com as duas) podem se cruzar e deixar
-o grupo sem label, e — raramente — lag de replicação pode deixar duas; em
-qualquer dos casos, só um `labeled` posterior para esse mesmo grupo
-exclusivo reconcilia (aplicar uma label não relacionada
-não faz nada por ele).
+reage a `issues.labeled` e faz **uma** coisa: ao aplicar `grupo::valor`
+bem-formado, remove as demais `grupo::*` da issue, olhando as labels
+**atuais** da issue (não o snapshot do evento). Não reescreve `grupo:valor`,
+não cria label, não normaliza caixa — ver
+[ADR-0005](docs/adr/0005-workflow-de-labels-so-impoe-exclusividade.md).
+
+É best-effort: sem serialização entre execuções, duas escritas do mesmo
+grupo no mesmo segundo podem se cruzar e deixar o grupo sem label; e —
+raramente — lag de replicação pode deixar duas. Nos dois casos, só um
+`labeled` posterior para esse mesmo grupo reconcilia (aplicar uma label não
+relacionada não faz nada por ele).
 
 ## Decisões de arquitetura (ADR)
 

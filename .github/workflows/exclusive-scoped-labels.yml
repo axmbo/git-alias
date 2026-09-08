@@ -17,182 +17,58 @@ jobs:
       - uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
         with:
           script: |
-            // Convenção estilo GitLab "scoped labels":
-            //   grupo::valor   -> exclusivo (só uma label desse grupo por issue)
-            //   grupo:valor    -> namespacing livre ENQUANTO o grupo não
-            //                     tiver nenhuma "grupo::*"; a partir daí é
-            //                     tratado como typo e reescrito (Caso 2)
-            //   label solta    -> não-exclusivo
+            // "scoped labels" estilo GitLab: "grupo::valor" (dois ":") é
+            // exclusiva — uma issue só carrega uma do mesmo "grupo::" por
+            // vez. Um ":" só, "grupo::" de valor vazio e label solta não
+            // são exclusivos.
             //
-            // Um nível só: em "a::b::c" o grupo é "a" (o 1º "::"); aninhar
-            // não é suportado.
-            //
-            // Não há lista fixa: um grupo é exclusivo ENQUANTO existir ao
-            // menos uma label "grupo::*" no repo. Isso é reavaliado a cada
-            // execução — criar a 1ª "grupo::*" torna o grupo exclusivo,
-            // apagar todas reverte.
-            //
-            // Best-effort, não consistência forte: sem serialização entre
-            // execuções (concurrency descartava eventos do meio de um
-            // burst), duas escritas do mesmo grupo no mesmo segundo (dois
-            // relabels, ou uma criação de issue já com as duas) podem se
-            // cruzar e deixar a issue SEM label do grupo; e, raramente, lag
-            // de réplica de leitura além do retry lá embaixo pode deixar
-            // DUAS. Não há auto-conserto garantido: só um "labeled"
-            // posterior mirando esse mesmo grupo exclusivo reconcilia —
-            // label solta, ou de outro grupo, cai no no-op mais abaixo.
+            // Este workflow faz só isso: ao aplicar "grupo::valor"
+            // bem-formado, remove as demais "grupo::*" DESSA issue. Não
+            // reescreve, não cria label, não normaliza caixa. É best-effort
+            // (sem serialização entre execuções). Contexto e limites: ver
+            // docs/adr/0005.
 
             const newLabel = context.payload.label.name;
-            const issue = context.payload.issue;
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
+            const { owner, repo } = context.repo;
+            const { number: issue_number } = context.payload.issue;
 
-            // Caso 1: já é scoped label ("::") — o próprio nome declara o
-            // grupo como exclusivo.
-            if (/^[^:]+::/.test(newLabel)) {
-              return await enforceExclusive(newLabel);
+            // Bem-formado: algo dos dois lados do 1º "::" ("a::b::c" ->
+            // grupo "a"). Senão — um ":" só, "grupo::", "::valor", label
+            // solta — não há o que fazer.
+            const m = newLabel.match(/^([^:]+)::.+/);
+            if (!m) return;
+            const groupPrefix = `${m[1]}::`;
+
+            // Fonte da verdade: as labels ATUAIS da issue, não o snapshot
+            // do webhook. 1 retry cobre o lag de replicação logo após o
+            // evento; se mesmo assim a label do gatilho não está lá, o
+            // usuário a desfez — nada a fazer.
+            let names = await currentLabelNames();
+            if (!names.includes(newLabel)) {
+              await new Promise((r) => setTimeout(r, 1500));
+              names = await currentLabelNames();
+              if (!names.includes(newLabel)) return;
             }
 
-            // Caso 2: um ":" só. Se o grupo já tem alguma "grupo::*" no
-            // repo, trata "grupo:valor" como typo de "grupo::valor".
-            const typoMatch = newLabel.match(/^([^:]+):([^:]+)$/);
-            if (typoMatch) {
-              const group = typoMatch[1].trim();
-              const value = typoMatch[2].trim();
-              if (!group || !value) return;
-
-              // O usuário pode ter desfeito o "grupo:valor" entre o evento
-              // e este run (mesmo motivo do verifyPresent no Caso 1), ou o
-              // GET ainda não replicou — o helper faz 1 retry. Se mesmo
-              // assim não está na issue, não há typo a corrigir.
-              if (!(await labelNamesWaitingFor(newLabel)).includes(newLabel)) return;
-
-              // Custo do design sem lista fixa: todo "grupo:valor" paga
-              // esta enumeração, mesmo em grupo que nunca terá "::".
-              const repoLabels = await github.paginate(
-                github.rest.issues.listLabelsForRepo,
-                { owner, repo, per_page: 100 },
-              );
-              // Grupo exclusivo = existe uma "grupo::valor" DE FATO (valor
-              // não-vazio) no repo. Case-insensitive: o GitHub trata nomes
-              // de label sem distinção de caixa.
-              const pfx = `${group}::`.toLowerCase();
-              if (!repoLabels.some((l) => {
-                const n = l.name.toLowerCase();
-                return n.startsWith(pfx) && n.length > pfx.length;
-              })) {
-                return; // namespacing livre — nada a fazer
-              }
-
-              const fixedLabel = `${group}::${value}`;
-              await ensureRepoLabel(fixedLabel, context.payload.label.color);
-
-              // Adiciona a corrigida ANTES de remover a com typo: se algo
-              // falhar no meio, a issue fica com as duas, nunca sem nenhuma.
-              await github.rest.issues.addLabels({
-                owner,
-                repo,
-                issue_number: issue.number,
-                labels: [fixedLabel],
-              });
-              await removeLabelIfPresent(newLabel);
-
-              return await enforceExclusive(fixedLabel, { verifyPresent: false });
-            }
-
-            // senão: não-exclusiva, não faz nada.
-
-            async function enforceExclusive(label, { verifyPresent = true } = {}) {
-              // Guarda: precisa ser "grupo::valor" com os dois lados
-              // não-vazios. Sem isso (sem "::", "::x", ou "x::" de valor
-              // vazio) groupPrefix ficaria degenerado e o laço varreria o
-              // grupo inteiro da issue. O Caso 1 já barra "::x", mas "x::"
-              // (label criada literalmente assim) chega aqui.
-              const sep = label.indexOf('::');
-              if (sep < 1 || sep + 2 >= label.length) return;
-              // Case-insensitive: "Priority::p0" e "priority::p1" são o
-              // mesmo grupo lógico para o GitHub. Compara em minúsculas,
-              // remove pela grafia real.
-              const groupPrefix = label.slice(0, sep + 2).toLowerCase();
-              const target = label.toLowerCase();
-
-              // Fonte da verdade: as labels ATUAIS da issue, não o snapshot
-              // do webhook. Com verifyPresent, o helper tolera o lag de
-              // replicação — se a label do gatilho não aparecer, 1 retry
-              // distingue "usuário desfez" de "ainda não replicou".
-              const names = verifyPresent
-                ? await labelNamesWaitingFor(label)
-                : await currentLabelNames();
-
-              if (verifyPresent && !names.includes(label)) return;
-
-              for (const name of names) {
-                const n = name.toLowerCase();
-                if (n.startsWith(groupPrefix) && n !== target) {
-                  await removeLabelIfPresent(name);
-                }
+            for (const name of names) {
+              if (name.startsWith(groupPrefix) && name !== newLabel) {
+                await removeLabelIfPresent(name);
               }
             }
 
             async function currentLabelNames() {
               const current = await github.paginate(
                 github.rest.issues.listLabelsOnIssue,
-                { owner, repo, issue_number: issue.number, per_page: 100 },
+                { owner, repo, issue_number, per_page: 100 },
               );
               return current.map((l) => l.name);
             }
 
-            // GET das labels da issue; se `wanted` não aparecer, 1 retry
-            // após o lag de replicação (consistência eventual logo depois
-            // do webhook). Usado por Caso 1 e Caso 2.
-            async function labelNamesWaitingFor(wanted) {
-              let names = await currentLabelNames();
-              if (!names.includes(wanted)) {
-                await sleep(1500);
-                names = await currentLabelNames();
-              }
-              return names;
-            }
-
-            function sleep(ms) {
-              return new Promise((resolve) => setTimeout(resolve, ms));
-            }
-
-            // Garante que a label existe no repo, de forma idempotente e à
-            // prova de corrida com outra execução.
-            async function ensureRepoLabel(name, color) {
-              try {
-                await github.rest.issues.getLabel({ owner, repo, name });
-                return; // já existe
-              } catch (err) {
-                if (err.status !== 404) throw err;
-              }
-              try {
-                await github.rest.issues.createLabel({ owner, repo, name, color });
-              } catch (err2) {
-                if (err2.status !== 422) throw err2;
-                // 422 tanto é "outra execução criou primeiro" (ok) quanto
-                // validação (nome > 50 chars, cor inválida). Só engole se a
-                // label de fato passou a existir; senão propaga o 422 real.
-                try {
-                  await github.rest.issues.getLabel({ owner, repo, name });
-                } catch (err3) {
-                  if (err3.status === 404) throw err2;
-                  throw err3; // 403/5xx/rate-limit: a causa real
-                }
-              }
-            }
-
-            // Corrida com outra execução pode remover a label antes de nós;
-            // 404 aqui só significa "já não está na issue".
+            // Corrida com outra execução pode remover a label antes de
+            // nós; 404 aqui só significa "já não está na issue".
             async function removeLabelIfPresent(name) {
               try {
-                await github.rest.issues.removeLabel({
-                  owner,
-                  repo,
-                  issue_number: issue.number,
-                  name,
-                });
+                await github.rest.issues.removeLabel({ owner, repo, issue_number, name });
               } catch (err) {
                 if (err.status !== 404) throw err;
               }
