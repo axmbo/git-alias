@@ -18,8 +18,7 @@ label** — só a issue-rascunho, apagada no fim.
 
 ## Passos
 
-No mesmo shell, um bloco de cada vez — não em lote, e sem outra issue
-sendo rotulada em paralelo.
+No mesmo shell, um bloco de cada vez (por causa do `$N` e da espera).
 
 **Preparo** — issue-rascunho já com uma prioridade (`$N` guarda o número):
 
