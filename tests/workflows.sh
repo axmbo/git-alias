@@ -6,16 +6,15 @@
 # deixa passar batido por serem string dentro de YAML — bloco de permissões
 # presente e mínimo, action pinada em SHA (não tag flutuante @vN), e o corpo
 # do `script:` sem erro de sintaxe JS (via `node --check`, quando o node
-# está instalado). Também fixa decisões da review #16: sem
-# KNOWN_EXCLUSIVE_GROUPS, exclusividade a partir de listLabelsForRepo,
-# reconciliação pelo estado atual da issue (listLabelsOnIssue) e nada de
-# `concurrency:` (a fila de profundidade 1 do Actions descartava eventos do
-# meio de um burst de labels).
+# está instalado). Também fixa a decisão do ADR-0005: o workflow SÓ impõe
+# exclusividade — reconcilia pelo estado atual da issue (listLabelsOnIssue),
+# não enumera as labels do repo, não cria label — e nada de `concurrency:`
+# (a fila de profundidade 1 do Actions descartava eventos do meio de um
+# burst).
 #
 # É o próprio artefato entregue, então checa também que o discriminador
 # discrimina (um token inexistente NÃO é encontrado). A cobertura de
-# comportamento (typo, 404, ordem add-antes-de-remove) fica para a issue do
-# Nível 2.
+# comportamento fica para a issue #17.
 # Determinístico: só shell POSIX, grep e awk (node é opcional).
 
 set -eu
@@ -89,13 +88,13 @@ check "todo 'uses:' remoto pinado em SHA de 40 hex" "0" "$unpinned"
 check "não reintroduz 'concurrency:'" \
 	"nao" "$(yn grep -Eq '^[[:space:]]*concurrency:' "$WF")"
 
-# --- redesenho da exclusividade (review #16) --------------------------
-check "exclusividade vem das labels do repo (listLabelsForRepo)" \
-	"sim" "$(yn grep -Fq 'listLabelsForRepo' "$WF")"
+# --- só impõe exclusividade (ADR-0005) -------------------------------
 check "reconcilia pelo estado atual da issue (listLabelsOnIssue)" \
 	"sim" "$(yn grep -Fq 'listLabelsOnIssue' "$WF")"
-check "não sobrou a lista fixa KNOWN_EXCLUSIVE_GROUPS" \
-	"nao" "$(yn grep -Fq 'KNOWN_EXCLUSIVE_GROUPS' "$WF")"
+check "não enumera as labels do repo (não reintroduz typo-fix)" \
+	"nao" "$(yn grep -Fq 'listLabelsForRepo' "$WF")"
+check "não cria label (não reintroduz createLabel)" \
+	"nao" "$(yn grep -Fq 'createLabel' "$WF")"
 
 # --- sintaxe do corpo do script: (best effort: só com node) --------
 # github-script roda o corpo dentro de uma async function; para o
@@ -117,8 +116,8 @@ if command -v node >/dev/null 2>&1; then
 	# corpo sai vazio/truncado e o `node --check` passaria em vácuo. Exige
 	# um sentinela no começo E um no fim (a última função do script), então
 	# um corte no meio é pego.
-	check "extração do corpo do script: pegou o começo (sentinela enforceExclusive)" \
-		"sim" "$(yn grep -Fq 'enforceExclusive' "$tmp")"
+	check "extração do corpo do script: pegou o começo (sentinela newLabel)" \
+		"sim" "$(yn grep -Fq 'const newLabel = context.payload.label.name' "$tmp")"
 	check "extração do corpo do script: pegou até o fim (sentinela removeLabelIfPresent)" \
 		"sim" "$(yn grep -Fq 'function removeLabelIfPresent' "$tmp")"
 	st=0
